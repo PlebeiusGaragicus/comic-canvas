@@ -7,6 +7,14 @@ const CONSOLE_ERROR_ALLOWLIST: RegExp[] = [];
 
 const errors: string[] = [];
 
+/** Screenshot baselines are a local macOS gate; CI runs the walk and the console assertion only. */
+const COMPARE_SCREENSHOTS = !process.env.CI;
+
+async function checkScreenshot(page: Page, name: string): Promise<void> {
+  if (!COMPARE_SCREENSHOTS) return;
+  await expect(page).toHaveScreenshot(name);
+}
+
 test.beforeEach(async ({ page }) => {
   errors.length = 0;
   page.on('console', (message) => {
@@ -50,7 +58,7 @@ test('landing shows the fixture project', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'E2E Fixture', exact: true })).toBeVisible();
   await settle(page);
-  await expect(page).toHaveScreenshot('landing.png');
+  await checkScreenshot(page, 'landing.png');
 });
 
 test('story view', async ({ page }) => {
@@ -58,14 +66,14 @@ test('story view', async ({ page }) => {
   await page.getByRole('button', { name: 'Story', exact: true }).click();
   await expect(page.locator('.canvas')).toBeVisible();
   await settle(page);
-  await expect(page).toHaveScreenshot('story.png');
+  await checkScreenshot(page, 'story.png');
 });
 
 test('layout view', async ({ page }) => {
   await openFixtureProject(page);
   await page.getByRole('button', { name: 'Layout', exact: true }).click();
   await settle(page);
-  await expect(page).toHaveScreenshot('layout.png');
+  await checkScreenshot(page, 'layout.png');
 });
 
 test('canvas view with node sidebar interaction', async ({ page }) => {
@@ -80,33 +88,33 @@ test('canvas view with node sidebar interaction', async ({ page }) => {
   await expect(page.locator('.image-viewer')).toHaveCount(0);
   await page.locator('.react-flow__pane').click({ position: { x: 60, y: 60 } });
   await settle(page);
-  await expect(page).toHaveScreenshot('canvas.png');
+  await checkScreenshot(page, 'canvas.png');
 });
 
 test('concept art view', async ({ page }) => {
   await openFixtureProject(page);
   await page.getByRole('button', { name: 'Concept Art', exact: true }).click();
   await settle(page);
-  await expect(page).toHaveScreenshot('concept-art.png');
+  await checkScreenshot(page, 'concept-art.png');
 });
 
 test('characters view', async ({ page }) => {
   await openFixtureProject(page);
   await page.getByRole('button', { name: 'Characters', exact: true }).click();
   await settle(page);
-  await expect(page).toHaveScreenshot('characters.png');
+  await checkScreenshot(page, 'characters.png');
 });
 
 test('locations view', async ({ page }) => {
   await openFixtureProject(page);
   await page.getByRole('button', { name: 'Locations', exact: true }).click();
   await settle(page);
-  await expect(page).toHaveScreenshot('locations.png');
+  await checkScreenshot(page, 'locations.png');
 });
 
 test('agent view', async ({ page }) => {
   await openFixtureProject(page);
   await page.getByRole('button', { name: 'Agent', exact: true }).click();
   await settle(page);
-  await expect(page).toHaveScreenshot('agent.png');
+  await checkScreenshot(page, 'agent.png');
 });

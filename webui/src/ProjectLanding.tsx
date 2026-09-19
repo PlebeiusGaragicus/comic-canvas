@@ -4,6 +4,7 @@ import { Modal } from './ui';
 import { formatRequestError } from './formatError';
 import { exportProject, importProject } from './store/zip';
 import { isBlobStoreSupported } from './store/blobs';
+import { useInstallPrompt } from './pwa/install';
 import type { Project } from './types';
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -38,6 +39,7 @@ export function ProjectLanding({
   const [busy, setBusy] = useState<'import' | 'export' | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const storeSupported = isBlobStoreSupported();
+  const installPrompt = useInstallPrompt();
   const canPickDirectory = typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function';
 
   const closeCreate = () => {
@@ -124,6 +126,13 @@ export function ProjectLanding({
             </button>
           )}
         </header>
+        {installPrompt.canInstall && (
+          <p className="landing-install muted">
+            Install Comic Canvas as an app to keep your projects safe from browser storage cleanup and use it offline.
+            <button type="button" onClick={() => void installPrompt.install()}>Install</button>
+            <button type="button" className="secondary" onClick={() => void installPrompt.dismiss()}>Not now</button>
+          </p>
+        )}
         {!storeSupported && (
           <p className="error error-banner landing-error">
             This browser cannot store projects: it lacks writable private file storage. Use Chrome, Edge, Firefox, or Safari 26 or newer.

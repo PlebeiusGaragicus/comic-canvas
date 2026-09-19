@@ -2,3 +2,5 @@ node_modules/
 dist/
 *.tsbuildinfo
 e2e/test-results/
+e2e/test-results-pwa/
+dev-dist/

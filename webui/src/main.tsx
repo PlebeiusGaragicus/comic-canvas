@@ -17,7 +17,7 @@ import { ProjectPhaseSidebar } from './ProjectPhaseSidebar';
 import { ProjectTopBar } from './ProjectTopBar';
 import type { ProjectPhase } from './projectNavigation';
 import { isEditableShortcutTarget } from './shared/dom';
-import { ToastProvider } from './shared/toast';
+import { ToastProvider, useToast } from './shared/toast';
 import type { LayoutEditorNavigation } from './storyPanels/layoutEditorNavigation';
 import { BOOKLET_PAGE_BORDER_OPTIONS, type BookletPageBorder } from './storyPanels/printLayout';
 import { characterEntityTags, locationEntityTags } from './canvas/shared';
@@ -32,6 +32,9 @@ import { usePiTask } from './sessions/usePiTask';
 import { PiTaskPanel } from './sessions/PiTaskPanel';
 import { installTestHooks } from './e2e/testHooks';
 import { onRemoteChange } from './store/changes';
+import { registerServiceWorker } from './pwa/update';
+import { installInstallPromptCapture } from './pwa/install';
+import { useOnlineStatus } from './pwa/offline';
 
 type PhaseViewMode = 'list' | 'canvas';
 
@@ -39,7 +42,27 @@ function phaseHasCanvas(phase: ProjectPhase) {
   return phase === 'image-canvas' || phase === 'characters-hub' || phase === 'locations-hub' || phase === 'concept-art';
 }
 
+const serviceWorker = registerServiceWorker();
+
+/** Sticky "update available" toast wired to the service worker. */
+function useUpdateToast() {
+  const toast = useToast();
+  useEffect(() => {
+    let dismiss: (() => void) | null = null;
+    const unsubscribe = serviceWorker.onUpdateAvailable((reload) => {
+      dismiss?.();
+      dismiss = toast.sticky('A new version of Comic Canvas is ready.', { label: 'Reload', onClick: reload });
+    });
+    return () => {
+      unsubscribe();
+      dismiss?.();
+    };
+  }, [toast]);
+}
+
 function App() {
+  useUpdateToast();
+  const online = useOnlineStatus();
   const [projects, setProjects] = useState<Project[]>([]);
   const [openProjectSlug, setOpenProjectSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -432,6 +455,11 @@ function App() {
                     onShowArchivedChange={workspace.setShowArchived}
                   />
                 ) : null}
+                {!online && (
+                  <span className="offline-pill" title="Generation and agent tasks need a network connection">
+                    Offline
+                  </span>
+                )}
                 <button
                   type="button"
                   className="icon-button"
@@ -580,6 +608,7 @@ function App() {
 }
 
 installTestHooks();
+installInstallPromptCapture();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

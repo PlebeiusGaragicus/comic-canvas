@@ -3,16 +3,26 @@ import { createPortal } from 'react-dom';
 
 type ToastKind = 'info' | 'success' | 'error';
 
+interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface Toast {
   id: number;
   kind: ToastKind;
   message: string;
+  /** Sticky toasts never auto-dismiss (update available, install hints). */
+  sticky?: boolean;
+  action?: ToastAction;
 }
 
 interface ToastApi {
   info: (message: string) => void;
   success: (message: string) => void;
   error: (message: string) => void;
+  /** Persistent toast with an action button; returns a dismiss function. */
+  sticky: (message: string, action?: ToastAction) => () => void;
 }
 
 const ToastContext = createContext<ToastApi | null>(null);
@@ -32,10 +42,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     timers.current.delete(id);
   }, []);
 
-  const push = useCallback((kind: ToastKind, message: string) => {
+  const push = useCallback((kind: ToastKind, message: string, options: { sticky?: boolean; action?: ToastAction } = {}) => {
     const id = nextId.current++;
-    setToasts((current) => [...current.slice(-(MAX_TOASTS - 1)), { id, kind, message }]);
-    timers.current.set(id, window.setTimeout(() => dismiss(id), DISMISS_MS[kind]));
+    setToasts((current) => [...current.slice(-(MAX_TOASTS - 1)), { id, kind, message, ...options }]);
+    if (!options.sticky) timers.current.set(id, window.setTimeout(() => dismiss(id), DISMISS_MS[kind]));
+    return id;
   }, [dismiss]);
 
   const pause = useCallback((id: number) => {
@@ -44,7 +55,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     timers.current.delete(id);
   }, []);
 
-  const resume = useCallback((id: number, kind: ToastKind) => {
+  const resume = useCallback((id: number, kind: ToastKind, sticky?: boolean) => {
+    if (sticky) return;
     timers.current.set(id, window.setTimeout(() => dismiss(id), DISMISS_MS[kind]));
   }, [dismiss]);
 
@@ -52,7 +64,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     info: (message) => push('info', message),
     success: (message) => push('success', message),
     error: (message) => push('error', message),
-  }), [push]);
+    sticky: (message, action) => {
+      const id = push('info', message, { sticky: true, action });
+      return () => dismiss(id);
+    },
+  }), [dismiss, push]);
 
   return (
     <ToastContext.Provider value={api}>
@@ -65,9 +81,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               className={`toast toast--${toast.kind}`}
               role={toast.kind === 'error' ? 'alert' : 'status'}
               onMouseEnter={() => pause(toast.id)}
-              onMouseLeave={() => resume(toast.id, toast.kind)}
+              onMouseLeave={() => resume(toast.id, toast.kind, toast.sticky)}
             >
               <span className="toast-message">{toast.message}</span>
+              {toast.action && (
+                <button type="button" className="toast-action" onClick={toast.action.onClick}>
+                  {toast.action.label}
+                </button>
+              )}
               <button type="button" className="toast-close" aria-label="Dismiss" onClick={() => dismiss(toast.id)}>×</button>
             </div>
           ))}

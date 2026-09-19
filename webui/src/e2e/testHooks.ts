@@ -4,7 +4,7 @@ import { createProject } from '../services/projects';
 import { importAsset } from '../services/assets';
 import { base64ToBytes } from '../shared/base64';
 import { importBook } from '../services/adaptation';
-import { setDefaultTextModel, upsertEndpoint } from '../services/settings';
+import { setDefaultTextModel, upsertEndpoint, wipeAllLocalData } from '../services/settings';
 
 /** Base URL the e2e mock endpoint answers on (intercepted with page.route). */
 export const E2E_MOCK_LLM_BASE_URL = 'https://mock-llm.test/v1';
@@ -41,6 +41,8 @@ export interface SeededFixture {
 }
 
 export async function seedFixture(): Promise<SeededFixture> {
+  // WebKit shares OPFS across Playwright profiles; start from a clean origin every time.
+  await wipeAllLocalData();
   await createProject({ slug: E2E_SLUG, name: 'E2E Fixture', settings: {} });
   const assetIds: string[] = [];
   for (const png of PNGS) {
