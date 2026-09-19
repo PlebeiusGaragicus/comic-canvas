@@ -52,6 +52,20 @@ export interface Project {
   coverThumbnailUrl?: string | null;
 }
 
+/** The persisted project document (no derived fields). */
+export type ProjectMetadata = Omit<Project, 'coverThumbnailUrl'>;
+
+export interface ProjectCreatePayload {
+  slug: string;
+  name: string;
+  settings?: Record<string, unknown>;
+}
+
+export interface DisplayPatchPayload {
+  title?: string | null;
+  tags?: string[] | null;
+}
+
 export type EntityKind = 'character' | 'location' | 'style';
 
 export interface TagDefinition {
@@ -585,6 +599,10 @@ export interface AgentTraceStep {
   model: string | null;
   /** pi-agent-core AgentMessage[] for the step, stored verbatim. */
   messages: unknown[];
+  /** Leading messages that were seeded by the app (book context), not typed by the user. */
+  seededMessages?: number;
+  /** Token estimate of the seeded context, when known. */
+  seededTokenEstimate?: number | null;
 }
 
 export interface AgentTraceDocument {
@@ -631,7 +649,7 @@ export interface PiTraceAssistantStep {
 }
 
 export interface PiTraceInfoBanner {
-  kind: 'compaction' | 'branch_summary';
+  kind: 'compaction' | 'branch_summary' | 'seed' | 'step';
   timestamp?: string | null;
   text: string;
   tokensBefore?: number | null;

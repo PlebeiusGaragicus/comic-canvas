@@ -106,6 +106,13 @@ export async function listScopedDocs<T>(store: ScopedDocStore, slug: string): Pr
   return records.map((record) => ({ id: record.id, doc: record.doc as T }));
 }
 
+/** Every row of a scoped store across all projects (used by the trash listing). */
+export async function listAllScopedDocs<T>(store: ScopedDocStore): Promise<Array<{ slug: string; id: string; doc: T }>> {
+  const db = await open();
+  const records = await db.getAll(store);
+  return records.map((record) => ({ slug: record.slug, id: record.id, doc: record.doc as T }));
+}
+
 /** Remove every row for a project across all stores (one transaction). */
 export async function deleteProjectRows(slug: string): Promise<void> {
   const db = await open();
