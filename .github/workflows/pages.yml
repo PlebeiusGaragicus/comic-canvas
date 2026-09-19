@@ -23,9 +23,8 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: webui/package-lock.json
+          cache-dependency-path: package-lock.json
       - name: Build app
-        working-directory: webui
         run: |
           npm ci --no-audit --no-fund
           npm run build
@@ -38,7 +37,7 @@ jobs:
           mkdocs build --strict
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: webui/dist
+          path: dist
 
   deploy:
     needs: build

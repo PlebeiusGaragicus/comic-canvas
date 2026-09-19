@@ -1,0 +1,6 @@
+Character reference sheet for JC Denton from Deus Ex. A male human agent with short dark hair, wearing a high-collar navy blue tactical trench coat and dark gray combat gear. He wears distinctive glasses over heavy cybernetic eye augmentations; his eyes are not visible, appearing as dark, tech-integrated lenses or opaque ocular implants. The character design follows a gritty, future cyberpunk aesthetic. Layout: top row — front full-body, three-quarter full-body, back full-body, same neutral standing pose, consistent scale. Bottom row — four head close-ups. White background. No text, no labels, no watermarks. Expressions: injured (with facial bruising/scrapes), augmentations active (glowing interface around the ocular implants), shocked, and focused.
+
+Style: Textured, hand-drawn crayon illustration featuring bold, expressive, and coarse strokes that create a deliberate "rough" or unpolished sketchbook aesthetic.
+Color palette: Highly saturated, vibrant primary and secondary colors with heavy layering of pigments.
+Realism: Stylized/Non-realistic; uses simplified shapes, exaggerated character features, and prominent medium texture over anatomical precision.
+Lighting: Flat to moderate, achieved through coarse cross-hatching and visible colored strokes rather than smooth gradients.

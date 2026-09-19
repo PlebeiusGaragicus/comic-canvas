@@ -1,14 +1,17 @@
-.venv/
-__pycache__/
-.pytest_cache/
 node_modules/
 dist/
+dev-dist/
 *.tsbuildinfo
+e2e/test-results/
+e2e/test-results-pwa/
 
 .DS_Store
 .env
 
-books/dist-release/
-build/
+# Old Python-era locals that may still exist on dev machines.
+.venv/
+__pycache__/
+.pytest_cache/
 site/
 dev-library/
+test-results/
