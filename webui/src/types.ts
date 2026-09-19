@@ -36,8 +36,12 @@ export interface Asset {
   provider?: ProviderCapture | null;
   hasPixels: boolean;
   thumbnailUrl?: string | null;
+  imageUrl?: string | null;
   isProtected?: boolean;
 }
+
+/** The persisted asset document (no derived fields). */
+export type AssetMetadata = Omit<Asset, 'hasPixels' | 'thumbnailUrl' | 'imageUrl' | 'isProtected'>;
 
 export interface Project {
   slug: string;
@@ -189,6 +193,42 @@ export interface LocationPatchPayload {
   userTags?: string[];
   variants?: Record<string, EntityVariantPatchPayload>;
   removeVariants?: string[];
+}
+
+/** Result of preparing the book for agent tasks (replaces the pi read-book session). */
+export interface BookContext {
+  bookHash: string;
+  tokenEstimate: number;
+  preparedAt: string;
+  fits: boolean;
+  modelId: string | null;
+  contextWindow: number | null;
+}
+
+export interface AdaptationMetadata {
+  version: 4;
+  characters: Record<string, CharacterRecord>;
+  locations: Record<string, LocationRecord>;
+  bookContext?: BookContext | null;
+}
+
+export interface CharacterCreatePayload {
+  name: string;
+  summary?: string;
+  slug?: string;
+}
+
+export type LocationCreatePayload = CharacterCreatePayload;
+
+export interface VisualStyleCreatePayload {
+  name: string;
+  prompt?: string | null;
+}
+
+export interface VisualStylePatchPayload {
+  name?: string;
+  prompt?: string;
+  default?: boolean;
 }
 
 export interface VisualStyleDefinition {
@@ -374,6 +414,13 @@ export interface ChatTurn {
   generatedAssetIds: string[];
 }
 
+export interface ChatProviderState {
+  name: 'google-genai';
+  model: string;
+  /** Raw Gemini `Content` objects; image parts carry `inlineData.dataRef` blob paths on disk. */
+  history: Array<Record<string, unknown>>;
+}
+
 export interface ChatSession {
   version: 1;
   id: string;
@@ -387,6 +434,7 @@ export interface ChatSession {
   defaults: ChatTurnSettings;
   protectedAssetIds: string[];
   turns: ChatTurn[];
+  provider: ChatProviderState;
 }
 
 export interface CreateChatSessionPayload {
@@ -404,6 +452,33 @@ export interface ChatTurnPayload {
 export interface ChatTurnResponse {
   session: ChatSession;
   assets: Asset[];
+}
+
+export interface ConceptCardCreatePayload {
+  subjectKind: ConceptArtSubjectKind;
+  prompt?: string | null;
+  displayName?: string;
+}
+
+export interface ConceptCardPatchPayload {
+  displayName?: string;
+  prompt?: string;
+  subjectKind?: ConceptArtSubjectKind;
+  archived?: boolean | null;
+}
+
+export interface ImageGroupNodeCreatePayload {
+  displayName?: string;
+  tags?: string[];
+  prompt?: string;
+  refs?: string[];
+  visualStyleId?: string | null;
+}
+
+export interface StoryPanelImagePromptWrite {
+  text: string;
+  characterSlugs?: string[] | null;
+  locationSlug?: string | null;
 }
 
 export interface ConceptCard {
@@ -462,8 +537,8 @@ export interface PiTaskStatus {
   startedAt: string;
   completedAt?: string | null;
   error?: string | null;
-  piSessionId?: string | null;
-  lastSeq?: number | null;
+  /** Token estimate of the seeded book context, when the task carries the book. */
+  bookTokenEstimate?: number | null;
 }
 
 export interface PiTaskEvent {
@@ -488,13 +563,35 @@ export interface AgentSession {
   updatedAt: string;
   completedAt?: string | null;
   archivedAt?: string | null;
-  piSessionId?: string | null;
-  piSessionFile?: string | null;
   parentSessionId?: string | null;
   source: Record<string, unknown>;
-  logFiles: Record<string, string>;
   error?: string | null;
   stats?: Record<string, unknown> | null;
+  /** Key of the stored agent trace (equals the task id). */
+  traceId?: string | null;
+  /** @deprecated pi subprocess era; removed from the UI in the agent-runtime phase. */
+  piSessionId?: string | null;
+  /** @deprecated pi subprocess era; removed from the UI in the agent-runtime phase. */
+  piSessionFile?: string | null;
+}
+
+export interface AgentSessionPatchPayload {
+  title?: string | null;
+  archived?: boolean | null;
+}
+
+export interface AgentTraceStep {
+  name: string;
+  model: string | null;
+  /** pi-agent-core AgentMessage[] for the step, stored verbatim. */
+  messages: unknown[];
+}
+
+export interface AgentTraceDocument {
+  version: 1;
+  taskId: string;
+  projectSlug: string;
+  steps: AgentTraceStep[];
 }
 
 export interface PiTraceUsage {
@@ -551,12 +648,59 @@ export interface PiTraceStats {
 
 export interface PiTraceDocument {
   sessionId?: string | null;
-  cwd?: string | null;
   version?: number | null;
   steps: PiTraceStep[];
   stats: PiTraceStats;
 }
 
+export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+/** Model-specific thinking wire values keyed by pi thinking level; `null` marks unsupported. */
+export type ThinkingLevelMap = Partial<Record<ThinkingLevel, string | null>>;
+
+export interface TextModelDef {
+  id: string;
+  name: string;
+  reasoning: boolean;
+  thinkingLevelMap?: ThinkingLevelMap | null;
+  contextWindow: number;
+  maxTokens?: number | null;
+  /** pi-ai `OpenAICompletionsCompat` overrides, passed through verbatim. */
+  compat?: Record<string, unknown> | null;
+}
+
+/** A user-configured OpenAI-completions compatible endpoint (BYOK). */
+export interface TextEndpoint {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  models: TextModelDef[];
+}
+
+export interface DefaultTextModel {
+  endpointId: string;
+  modelId: string;
+}
+
+export interface ImageDefaults {
+  model: string;
+  aspectRatio: string;
+  imageSize: string;
+}
+
+export interface AppSettings {
+  version: 1;
+  endpoints: TextEndpoint[];
+  defaultTextModel: DefaultTextModel | null;
+  thinkingLevel: ThinkingLevel;
+  geminiApiKey: string;
+  imageDefaults: ImageDefaults;
+  storageMode: 'opfs';
+  uiPrefs: Record<string, unknown>;
+}
+
+/** @deprecated Backend settings probe; SettingsModal is rewritten in the UI-cutover phase. */
 export interface SettingsCheck {
   name: string;
   ok: boolean;
@@ -564,10 +708,21 @@ export interface SettingsCheck {
   hint?: string | null;
 }
 
+/** @deprecated Backend settings probe; SettingsModal is rewritten in the UI-cutover phase. */
 export interface SettingsInfo {
   appVersion: string;
   libraryVersion: string | null;
   homePath: string;
   geminiKeyConfigured: boolean;
   checks: SettingsCheck[];
+}
+
+export interface TrashEntry {
+  kind: 'asset' | 'project';
+  id: string;
+  deletedAt: string;
+  /** The deleted document (asset metadata or project metadata). */
+  doc: unknown;
+  /** OPFS paths (files or one directory) to remove on empty-trash. */
+  blobPaths: string[];
 }

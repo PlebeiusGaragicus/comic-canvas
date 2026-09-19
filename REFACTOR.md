@@ -1,9 +1,37 @@
 # Refactor: client-only PWA with pi embedded in the browser
 
-Status: **decided, not started**. This document is the brief for the agent
+Status: **in progress on branch `refactor`**. This document is the brief for the agent
 that plans and executes the work. It is written to stand alone: everything
 needed to understand the current system, the target system, and why, is here
 or pointed at from here. Read it fully before planning.
+
+> **Errata and decisions (2026-09-18, after alignment with the owner).** These
+> override the text below where they differ.
+>
+> - Text endpoints are **OpenAI-completions only**. No Anthropic-messages
+>   support in the agent; §5.4's `api` field and the Anthropic header notes do
+>   not apply.
+> - Hosting: app at `https://abvstudio.net/` (Vite `base: '/'`), docs at
+>   `https://abvstudio.net/docs/`, one GitHub Pages artifact. `plebchat.me` is
+>   not used.
+> - OPFS blobs are written from the **main thread** via `createWritable()`
+>   (Safari 26+, Chromium, Firefox 111+). No worker.
+> - First-class browsers: Chrome desktop + Safari desktop (Playwright
+>   `chromium` + `webkit`).
+> - The app may be broken between phases; one PR to `dev` at the end.
+> - Thumbnails never existed on the backend (`/thumb` served the full PNG);
+>   they are a new feature. Characters/locations live inside
+>   `adaptation.json`, not per-record files.
+> - pi 0.85.1: `Agent` requires `streamFn` (use `streamSimple` from
+>   `@earendil-works/pi-ai/api/openai-completions` with the endpoint key
+>   injected); there are no `userMessage`/`assistantMessage` helpers and no
+>   `retry`/`compaction_*` events; `fauxProvider()` replaces `fake_pi.py`.
+> - Refine-panel-prompt target separator is `:` (`panelId:promptId`).
+> - Reported `contextWindow` is used as-is (no floor); the book-fits check
+>   must see the real number.
+> - Phase order executed: store → library → adaptation records → story panels
+>   + print → generation/chat/settings → UI cutover → agent runtime → PWA →
+>   delete backend + hoist.
 
 ---
 
@@ -35,7 +63,7 @@ Three things motivate this (see §2 for the evidence):
 The reference implementation for the browser-side agent is
 `/Users/satoshi/Downloads/PLEBCHAT-PLATFORM/plebchat-me` (SvelteKit, pi-agent-core
 0.80.6) and the smaller
-`/Users/satoshi/Downloads/pi-web-apps/PiChessBrowser` (React, pi-agent-core
+`/Users/satoshi/Downloads/PiChessBrowser` (React, pi-agent-core
 0.80.6, ~200 lines in `src/ai/piPlayer.ts`). Both are on this machine. Both are
 BYOK, both run `Agent` in the browser. plebchat is also a PWA (`vite-plugin-pwa`,
 `idb`, `workbox-window`) and is the model for §5.7 and §5.1.
@@ -71,16 +99,14 @@ canvas.json                    CanvasDocument (nodes = images, groups, layout)
 tags.json                      TagRegistryDocument
 assets/<ULID>.json             AssetMetadata (one per image; prompt, receipt,
                                provider capture, parents, tags, archive state)
-assets/<ULID>.png|.jpg         the image bytes
-assets/<ULID>.thumb.*          derived thumbnail
+assets/<ULID>.png              the image bytes (always PNG; no thumbnails exist)
 chat-sessions/<ULID>/session.json   ChatSessionDocument (Gemini refinement chat)
 chat-sessions/<ULID>/blobs/    attachments
 story-panels/panels.json       StoryPanelDocument (panels, pages, captions,
                                image prompts, crops, layout)
 adaptation/adaptation.json     AdaptationMetadata
 adaptation/book.txt            imported source text
-adaptation/characters/*.json   CharacterRecord (structured; variants)
-adaptation/locations/*.json    LocationRecord
+adaptation/adaptation.json     also holds characters{} and locations{} (CharacterRecord / LocationRecord)
 adaptation/concept-cards/      ConceptCardDocument
 adaptation/style-refs/visual-styles.json
 adaptation/sessions/agent-sessions/*.json   AgentSessionDocument (task ledger)
@@ -142,7 +168,7 @@ signature suffices. The `Pi*`/`AgentSession*` shapes change materially (§5.5).
 | `agent_sessions.py` | – | task ledger | `src/agent/ledger.ts` |
 | `pi_env.py`, `pi_events.py`, `preflight.py`, `app_config.py`, `paths.py`, `cli.py`, `appmain.py`, `main.py`, `routes/*` | – | process/env/HTTP plumbing | **deleted** |
 
-The full REST surface (63 endpoints) is in `api/routes/*.py`; each is the
+The full REST surface (73 endpoints) is in `api/routes/*.py`; each is the
 signature of a service function the browser needs. `test_api.py` (3110 lines)
 is the behavioral spec for those services and should be read when porting.
 
@@ -641,8 +667,8 @@ CORS for local servers, storage/backup), `README.md`. New Pages workflow.
 - plebchat agent layer: `/Users/satoshi/Downloads/PLEBCHAT-PLATFORM/plebchat-me/app/src/lib/ai/`
   (`runner.svelte.ts`, `model.ts`, `providers.ts`, `tools.ts`, `retry-feedback.ts`)
 - plebchat storage/PWA: `…/app/src/lib/db/`, `…/app/src/lib/pwa/`, `…/app/package.json`
-- PiChessBrowser minimal runner: `/Users/satoshi/Downloads/pi-web-apps/PiChessBrowser/src/ai/piPlayer.ts`
-- pi monorepo source: `/Users/satoshi/Downloads/pi-web-apps/pi/packages/{ai,agent,coding-agent}`
+- PiChessBrowser minimal runner: `/Users/satoshi/Downloads/PiChessBrowser/src/ai/piPlayer.ts`
+- pi monorepo source: `/Users/satoshi/Downloads/pi-everything/pi/packages/{ai,agent,coding-agent} (0.80.10; the 0.85.1 packages are installed under /opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/)`
 - pi docs (installed CLI): `/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/docs/`
   (`sdk.md`, `rpc.md`, `extensions.md`, `skills.md`, `session-format.md`)
 - Current integration thesis: `docs/pi-agent-integration.md` (sections 0–2 still apply)
