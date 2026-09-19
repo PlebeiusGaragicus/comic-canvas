@@ -188,3 +188,56 @@ export function createConceptCardTool(slug: string): AgentTool {
     },
   });
 }
+
+// --- panel prompt tools ---------------------------------------------------------------
+
+import { appendImagePrompt, replaceImagePrompt } from '../../services/storyPanels';
+
+export function setPanelImagePromptTool(slug: string): AgentTool {
+  return defineTool({
+    name: 'set_panel_image_prompt',
+    label: 'Set panel image prompt',
+    description:
+      'Save a finished image-generation prompt onto a story panel as a new prompt, ' +
+      'tagging which canonical characters and location the panel depicts. ' +
+      'Call exactly once with the complete final prompt text.',
+    parameters: Type.Object({
+      panelId: Type.String({ description: 'The target panel id, e.g. panel-004' }),
+      prompt: Type.String({ description: 'The complete generation-ready prompt text (plain prose)' }),
+      characterSlugs: Type.Array(Type.String(), {
+        description: 'Slugs of every character visible in this panel, chosen only from the canonical character slugs in the context. Empty array if none.',
+      }),
+      locationSlug: Type.Optional(
+        Type.String({ description: "Slug of the panel's setting, chosen only from the canonical location slugs in the context. Omit if no listed location fits." }),
+      ),
+    }),
+    executionMode: 'sequential',
+    async execute(_id, params) {
+      const promptId = await appendImagePrompt(slug, params.panelId, params.prompt, {
+        characterSlugs: params.characterSlugs ?? [],
+        locationSlug: params.locationSlug ?? null,
+      });
+      return textResult(`Saved: ${JSON.stringify({ promptId })}`, true);
+    },
+  });
+}
+
+export function replacePanelImagePromptTool(slug: string): AgentTool {
+  return defineTool({
+    name: 'replace_panel_image_prompt',
+    label: 'Replace panel image prompt',
+    description:
+      'Replace the text of one existing image prompt on a story panel with a revised version. ' +
+      'Call exactly once with the complete revised prompt text.',
+    parameters: Type.Object({
+      panelId: Type.String({ description: 'The target panel id, e.g. panel-004' }),
+      promptId: Type.String({ description: 'The id of the prompt being revised, e.g. prompt-001' }),
+      prompt: Type.String({ description: 'The complete revised prompt text (plain prose)' }),
+    }),
+    executionMode: 'sequential',
+    async execute(_id, params) {
+      const promptId = await replaceImagePrompt(slug, params.panelId, params.promptId, params.prompt);
+      return textResult(`Replaced: ${JSON.stringify({ promptId })}`, true);
+    },
+  });
+}

@@ -1,7 +1,7 @@
 /** TaskManager: runs task profiles as pi-agent-core Agents in the page
  *  (replaces pi_runtime.PiSessionManager + the RPC subprocess). */
-import { Agent, type AgentMessage } from '@earendil-works/pi-agent-core';
-import type { AgentSessionKind, AgentTraceDocument, AgentTraceStep, PiTaskEvent, PiTaskProfile, PiTaskState, PiTaskStatus } from '../types';
+import { Agent, type AgentMessage, type StreamFn } from '@earendil-works/pi-agent-core';
+import type { AgentSessionKind, AgentTraceDocument, AgentTraceStep, PiTaskEvent, PiTaskProfile, PiTaskState, PiTaskStatus, TextEndpoint } from '../types';
 import { ServiceError, conflict, invalid, notFound } from '../services/errors';
 import { utcNow } from '../services/common';
 import { newUlid } from '../services/ids';
@@ -87,6 +87,8 @@ export class TaskManager {
   private readonly sweptSlugs = new Set<string>();
   private readonly changeListeners = new Set<TaskChangeListener>();
   private unloadGuardInstalled = false;
+  /** Builds the stream function for an endpoint; tests swap in a faux provider. */
+  streamFnFactory: (endpoint: TextEndpoint) => StreamFn = makeStreamFn;
 
   /** Fires when a task starts or changes state (replaces the dashboard's polling). */
   onChange(listener: TaskChangeListener): () => void {
@@ -186,6 +188,24 @@ export class TaskManager {
   resetForTests(): void {
     this.handles.clear();
     this.sweptSlugs.clear();
+    this.changeListeners.clear();
+    this.streamFnFactory = makeStreamFn;
+  }
+
+  /** Test hook: wait for a task to reach a terminal state. */
+  async waitForTask(taskId: string): Promise<PiTaskStatus> {
+    const handle = this.handles.get(taskId);
+    if (!handle) throw notFound(`Pi task not found: ${taskId}`);
+    if (!ACTIVE_STATES.includes(handle.state)) return handle.toStatus();
+    await new Promise<void>((resolve) => {
+      const unsubscribe = handle.events.subscribe((record) => {
+        if (record.event.type === 'task_state' && !ACTIVE_STATES.includes(record.event.state as PiTaskState)) {
+          unsubscribe();
+          resolve();
+        }
+      }, handle.events.lastSeq);
+    });
+    return handle.toStatus();
   }
 
   private installUnloadGuard(): void {
@@ -221,17 +241,19 @@ export class TaskManager {
         }
         if (merged) await updateSession(slug, handle.id, { source: merged });
       }
-      handle.setState('done');
+      // Ledger first, then the terminal event: subscribers that react to
+      // task_state (dashboard refresh, tests) must see the final row.
       await updateSession(slug, handle.id, { status: 'succeeded', completed: true });
+      handle.setState('done');
     } catch (error) {
       if (error instanceof AbortedError || handle.abortRequested) {
-        handle.setState('cancelled');
         await updateSession(slug, handle.id, { status: 'failed', error: 'Cancelled', completed: true });
+        handle.setState('cancelled');
       } else {
         const message = errorText(error);
         console.error('[comic-canvas] agent task failed', { taskId: handle.id, profile: profile.id, message });
-        handle.setState('failed', message);
         await updateSession(slug, handle.id, { status: 'failed', error: message, completed: true });
+        handle.setState('failed', message);
       }
     } finally {
       handle.agent = null;
@@ -251,10 +273,11 @@ export class TaskManager {
       seededMessages = messages.length;
       seededTokenEstimate = book.tokenEstimate;
       handle.bookTokenEstimate = book.tokenEstimate;
+      handle.events.append({ type: 'book_context', tokenEstimate: book.tokenEstimate, contextWindow: model.contextWindow });
     }
     const agent = new Agent({
       initialState: { systemPrompt: step.systemPrompt, model, tools: step.tools, messages, thinkingLevel: settings.thinkingLevel },
-      streamFn: makeStreamFn(resolved.endpoint),
+      streamFn: this.streamFnFactory(resolved.endpoint),
       getApiKey: () => resolved.endpoint.apiKey.trim() || undefined,
       toolExecution: 'sequential',
     });

@@ -21,6 +21,14 @@ function buildItems(events: PiTaskEvent[]): PanelItem[] {
         index: Number(event.index ?? 0),
         label: String(event.label ?? ''),
       });
+    } else if (event.type === 'book_context') {
+      const tokens = Number(event.tokenEstimate ?? 0);
+      const window = Number(event.contextWindow ?? 0);
+      items.push({
+        kind: 'text',
+        key: `e${record.seq}`,
+        text: `Book context seeded: about ${tokens.toLocaleString()} tokens${window ? ` of a ${window.toLocaleString()}-token window` : ''}.`,
+      });
     } else if (event.type === 'tool_start') {
       items.push({
         kind: 'tool',

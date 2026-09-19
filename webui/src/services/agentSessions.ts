@@ -87,7 +87,8 @@ export async function listSessions(slug: string, includeArchived = false): Promi
   return rows
     .map((row) => row.doc)
     .filter((session) => includeArchived || !session.archivedAt)
-    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
+    // Newest first; ids are time-sortable ULIDs, so they break same-second ties.
+    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
 }
 
 export async function readSession(slug: string, sessionId: string): Promise<AgentSession> {

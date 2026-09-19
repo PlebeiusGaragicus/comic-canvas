@@ -3,6 +3,11 @@
 import { createProject } from '../services/projects';
 import { importAsset } from '../services/assets';
 import { base64ToBytes } from '../shared/base64';
+import { importBook } from '../services/adaptation';
+import { setDefaultTextModel, upsertEndpoint } from '../services/settings';
+
+/** Base URL the e2e mock endpoint answers on (intercepted with page.route). */
+export const E2E_MOCK_LLM_BASE_URL = 'https://mock-llm.test/v1';
 
 export const E2E_SLUG = 'e2e-fixture';
 
@@ -50,13 +55,29 @@ export async function seedFixture(): Promise<SeededFixture> {
   return { slug: E2E_SLUG, assetIds };
 }
 
+/** Fixture plus a book and a text model pointing at the mocked endpoint. */
+export async function seedAgentFixture(): Promise<SeededFixture> {
+  const fixture = await seedFixture();
+  const book = ['Hero, a tall farm hand, lived by the red barn.', 'Villain, the fox, watched from the fence.', 'One morning the hen bolted.'].join('\n');
+  await importBook(E2E_SLUG, new File([book], 'book.txt', { type: 'text/plain' }));
+  await upsertEndpoint({
+    id: 'e2e-endpoint',
+    name: 'Mock endpoint',
+    baseUrl: E2E_MOCK_LLM_BASE_URL,
+    apiKey: 'test-key',
+    models: [{ id: 'mock-model', name: 'Mock model', reasoning: false, contextWindow: 128000 }],
+  });
+  await setDefaultTextModel({ endpointId: 'e2e-endpoint', modelId: 'mock-model' });
+  return fixture;
+}
+
 declare global {
   interface Window {
-    __comicCanvas?: { seedFixture: typeof seedFixture };
+    __comicCanvas?: { seedFixture: typeof seedFixture; seedAgentFixture: typeof seedAgentFixture };
   }
 }
 
 export function installTestHooks(): void {
   if (import.meta.env.VITE_E2E !== '1') return;
-  window.__comicCanvas = { seedFixture };
+  window.__comicCanvas = { seedFixture, seedAgentFixture };
 }
