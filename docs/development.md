@@ -31,7 +31,9 @@ seeds a fixture project inside the page through the app's own services
 (`src/e2e/testHooks.ts`, enabled by `VITE_E2E=1`), so it needs no model
 endpoint or Gemini key; the agent spec mocks the text endpoint with
 `page.route`. WebKit gets a persistent browser profile because its OPFS is
-unavailable in ephemeral contexts.
+unavailable in ephemeral contexts, and the WebKit tests skip themselves on
+Playwright's Linux WebKit build, which has no OPFS at all (so CI effectively
+covers Chromium; run the WebKit project on macOS).
 
 Screenshot baselines live in `e2e/baselines/<view>-<project>.png` and are
 compared locally (macOS). CI runs the same walk with the pixel comparison
