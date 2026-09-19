@@ -11,12 +11,23 @@ export interface ImageDimensions {
   height: number;
 }
 
+/** Source-pixel crop window (`right`/`bottom` exclusive), as computed by
+ *  `storyPanels/panelImageCrop.ts::computeSourceCropBox`. */
+export interface CropBox {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
 export interface ImageOps {
   /** Re-encode any supported image as PNG. */
   normalizeToPng(blob: Blob): Promise<Blob>;
   imageDimensions(blob: Blob): Promise<ImageDimensions>;
   /** WebP thumbnail whose longest side is at most `maxSize` (never upscaled). */
   makeThumbnail(blob: Blob, maxSize?: number): Promise<Blob>;
+  /** The `box` window of the image re-encoded as PNG (print crops). */
+  cropToPng(blob: Blob, box: CropBox): Promise<Blob>;
 }
 
 const MIME_BY_TYPE: Record<ImageType, string> = {
@@ -105,6 +116,21 @@ export const browserImageOps: ImageOps = {
       bitmap.close();
     }
   },
+  async cropToPng(blob, box) {
+    const width = Math.max(1, Math.round(box.right - box.left));
+    const height = Math.max(1, Math.round(box.bottom - box.top));
+    let bitmap: ImageBitmap;
+    try {
+      bitmap = await createImageBitmap(blob, Math.round(box.left), Math.round(box.top), width, height);
+    } catch (error) {
+      throw new Error('Could not decode image', { cause: error });
+    }
+    try {
+      return await drawScaled(bitmap, width, height).convertToBlob({ type: 'image/png' });
+    } finally {
+      bitmap.close();
+    }
+  },
 };
 
 /** The active implementation. Mutated in place by `setImageOpsForTests`. */
@@ -124,4 +150,8 @@ export function imageDimensions(blob: Blob): Promise<ImageDimensions> {
 
 export function makeThumbnail(blob: Blob, maxSize = THUMB_MAX_SIZE): Promise<Blob> {
   return imageOps.makeThumbnail(blob, maxSize);
+}
+
+export function cropToPng(blob: Blob, box: CropBox): Promise<Blob> {
+  return imageOps.cropToPng(blob, box);
 }
