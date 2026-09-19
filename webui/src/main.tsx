@@ -30,6 +30,8 @@ import { AgentDashboardView } from './sessions/AgentDashboardView';
 import { ConceptArtView } from './conceptArt/ConceptArtView';
 import { usePiTask } from './sessions/usePiTask';
 import { PiTaskPanel } from './sessions/PiTaskPanel';
+import { installTestHooks } from './e2e/testHooks';
+import { onRemoteChange } from './store/changes';
 
 type PhaseViewMode = 'list' | 'canvas';
 
@@ -87,8 +89,23 @@ function App() {
   }, []);
 
   useEffect(() => {
-    loadProjects().catch((err) => setError(String(err)));
+    loadProjects()
+      .catch((err) => setError(formatRequestError(err)))
+      .finally(() => {
+        document.body.dataset.appReady = 'true';
+      });
   }, [loadProjects]);
+
+  // Another tab changed the open project: refetch instead of overwriting it.
+  useEffect(() => {
+    return onRemoteChange((change) => {
+      if (change.slug === null || change.store === 'settings') return;
+      void loadProjects().catch((err) => console.error('[comic-canvas] refetch after remote change failed', err));
+      if (openProjectSlug && change.slug === openProjectSlug) {
+        void workspace.loadProject(openProjectSlug);
+      }
+    });
+  }, [loadProjects, openProjectSlug, workspace.loadProject]);
 
   useEffect(() => {
     if (!openProjectSlug) return;
@@ -194,6 +211,9 @@ function App() {
           onCreated={async (nextSlug) => {
             await loadProjects();
             await openProject(nextSlug);
+          }}
+          onImported={async () => {
+            await loadProjects();
           }}
           onOpenSettings={() => setShowSettingsModal(true)}
         />
@@ -558,6 +578,8 @@ function App() {
     </div>
   );
 }
+
+installTestHooks();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

@@ -129,8 +129,15 @@ function PiTraceAssistantBlock({
   );
 }
 
+const BANNER_LABELS: Record<PiTraceInfoBanner['kind'], string> = {
+  compaction: 'Compaction',
+  branch_summary: 'Branch summary',
+  seed: 'Book context',
+  step: 'Step',
+};
+
 function PiTraceBannerBlock({ step }: { step: PiTraceInfoBanner }) {
-  const label = step.kind === 'compaction' ? 'Compaction' : 'Branch summary';
+  const label = BANNER_LABELS[step.kind];
   return (
     <article className="pi-trace-block pi-trace-block-banner">
       <header className="pi-trace-block-head">
@@ -154,7 +161,7 @@ function PiTraceStepBlock({ step, collapsed }: { step: PiTraceStep; collapsed: b
 export function PiTraceTimeline({
   trace,
   collapsed = true,
-  emptyMessage = 'No Pi trace yet.',
+  emptyMessage = 'No trace yet.',
   isLoading = false,
   footer,
 }: {
@@ -210,10 +217,6 @@ export function formatSessionSubtitle(updatedAt: string, stats: { messageCount: 
 export function cleanSessionPreview(text: string | null | undefined): string {
   const trimmed = (text ?? '').trim();
   if (!trimmed) return '';
-  if (/^\/skill:/.test(trimmed) || /^<skill[\s>]/i.test(trimmed)) {
-    return 'Forked from read-book session';
-  }
-  const withoutSkills = trimmed.replace(/<skill[\s\S]*?<\/skill>/gi, '').trim();
-  const candidate = (withoutSkills || trimmed).split('\n').map((line) => line.trim()).find(Boolean) ?? trimmed;
+  const candidate = trimmed.split('\n').map((line) => line.trim()).find(Boolean) ?? trimmed;
   return candidate.length > 80 ? `${candidate.slice(0, 77)}…` : candidate;
 }

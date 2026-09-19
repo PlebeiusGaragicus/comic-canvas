@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { formatRequestError } from '../formatError';
+import { taskManager } from '../agent/runtime';
 import type { PiTaskEvent, PiTaskProfile, PiTaskState } from '../types';
 
 const TERMINAL_STATES: PiTaskState[] = ['done', 'failed', 'cancelled'];
@@ -10,8 +11,8 @@ export function isTerminalTaskState(state: PiTaskState | null): boolean {
 }
 
 /**
- * Drives one narrow pi task profile: starts it, attaches to its SSE event
- * stream (reattaching to an already-running task on mount), and reports
+ * Drives one narrow agent task profile: starts it, subscribes to its in-page
+ * event stream (reattaching to an already-running task on mount), and reports
  * live events + terminal state. `onFinished` fires once per completed run;
  * `onMutation` fires on each successful tool_end so multi-target tasks can
  * refresh the launching view as results land, not just at the end.
@@ -27,7 +28,7 @@ export function usePiTask(
   const [state, setState] = useState<PiTaskState | null>(null);
   const [events, setEvents] = useState<PiTaskEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const sourceRef = useRef<EventSource | null>(null);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
   const finishedRef = useRef(false);
   const onFinishedRef = useRef(onFinished);
   onFinishedRef.current = onFinished;
@@ -35,8 +36,8 @@ export function usePiTask(
   onMutationRef.current = onMutation;
 
   const closeStream = useCallback(() => {
-    sourceRef.current?.close();
-    sourceRef.current = null;
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = null;
   }, []);
 
   const attach = useCallback(
@@ -45,40 +46,28 @@ export function usePiTask(
       finishedRef.current = false;
       setTaskId(id);
       setEvents([]);
-      const source = new EventSource(api.piTaskEventsUrl(slug, id));
-      sourceRef.current = source;
-      source.onmessage = (message) => {
-        let record: PiTaskEvent;
-        try {
-          record = JSON.parse(message.data) as PiTaskEvent;
-        } catch {
-          return;
-        }
-        setEvents((current) => [...current, record]);
-        if (record.event.type === 'tool_end' && !record.event.isError) {
-          void onMutationRef.current?.(String(record.event.toolName ?? ''));
-        }
-        if (record.event.type === 'task_state') {
-          const nextState = record.event.state as PiTaskState;
-          setState(nextState);
-          if (record.event.error) {
-            setError(String(record.event.error));
+      let unsubscribe: (() => void) | null = null;
+      try {
+        unsubscribe = taskManager.subscribe(slug, id, (record) => {
+          setEvents((current) => [...current, record]);
+          if (record.event.type === 'tool_end' && !record.event.isError) {
+            void onMutationRef.current?.(String(record.event.toolName ?? ''));
           }
-          if (isTerminalTaskState(nextState) && !finishedRef.current) {
-            finishedRef.current = true;
-            source.close();
-            if (sourceRef.current === source) sourceRef.current = null;
-            void onFinishedRef.current?.(nextState);
+          if (record.event.type === 'task_state') {
+            const nextState = record.event.state as PiTaskState;
+            setState(nextState);
+            if (record.event.error) setError(String(record.event.error));
+            if (isTerminalTaskState(nextState) && !finishedRef.current) {
+              finishedRef.current = true;
+              void onFinishedRef.current?.(nextState);
+            }
           }
-        }
-      };
-      source.onerror = () => {
-        // Stream closed server-side after a terminal event; EventSource
-        // auto-reconnects otherwise (with Last-Event-ID replay).
-        if (finishedRef.current) {
-          source.close();
-        }
-      };
+        });
+      } catch (err) {
+        setError(formatRequestError(err));
+        return;
+      }
+      unsubscribeRef.current = unsubscribe;
     },
     [closeStream],
   );
@@ -101,7 +90,7 @@ export function usePiTask(
           attach(projectSlug, active[0].taskId);
         }
       } catch (err) {
-        console.error('[photo-web] failed to check running pi tasks', err);
+        console.error('[comic-canvas] failed to check running agent tasks', err);
       }
     })();
     return () => {
@@ -150,10 +139,9 @@ export function usePiTask(
 }
 
 /**
- * Attaches to one already-running pi task by id (Agent dashboard): streams
- * its SSE events and reports live state. Does not start tasks. `onEvent`
- * fires for every streamed record so the caller can react (e.g. refresh the
- * trace pane) without polling.
+ * Attaches to one already-running task by id (Agent dashboard): streams its
+ * events and reports live state. Does not start tasks. `onEvent` fires for
+ * every record so the caller can react (e.g. refresh the trace pane).
  */
 export function useAttachedPiTask(
   projectSlug: string,
@@ -172,33 +160,27 @@ export function useAttachedPiTask(
 
   useEffect(() => {
     let finished = false;
-    const source = new EventSource(api.piTaskEventsUrl(projectSlug, taskId));
-    source.onmessage = (message) => {
-      let record: PiTaskEvent;
-      try {
-        record = JSON.parse(message.data) as PiTaskEvent;
-      } catch {
-        return;
-      }
-      setEvents((current) => [...current, record]);
-      onEventRef.current?.(record);
-      if (record.event.type === 'task_state') {
-        const nextState = record.event.state as PiTaskState;
-        setState(nextState);
-        if (record.event.error) setError(String(record.event.error));
-        if (isTerminalTaskState(nextState) && !finished) {
-          finished = true;
-          source.close();
-          void onFinishedRef.current?.(nextState);
+    let unsubscribe: (() => void) | null = null;
+    try {
+      unsubscribe = taskManager.subscribe(projectSlug, taskId, (record) => {
+        setEvents((current) => [...current, record]);
+        onEventRef.current?.(record);
+        if (record.event.type === 'task_state') {
+          const nextState = record.event.state as PiTaskState;
+          setState(nextState);
+          if (record.event.error) setError(String(record.event.error));
+          if (isTerminalTaskState(nextState) && !finished) {
+            finished = true;
+            void onFinishedRef.current?.(nextState);
+          }
         }
-      }
-    };
-    source.onerror = () => {
-      if (finished) source.close();
-    };
+      });
+    } catch (err) {
+      setError(formatRequestError(err));
+    }
     return () => {
       finished = true;
-      source.close();
+      unsubscribe?.();
     };
   }, [projectSlug, taskId]);
 

@@ -6,6 +6,7 @@ import { Icon } from '../Icon';
 import type { ProjectPhase } from '../projectNavigation';
 import type { AgentSession, AgentSessionKind, AgentSessionStatus, PiTaskEvent, PiTaskState, PiTaskStatus, PiTraceDocument } from '../types';
 import { useAttachedPiTask } from './usePiTask';
+import { taskManager } from '../agent/runtime';
 import { PiTaskPanel } from './PiTaskPanel';
 import { cleanSessionPreview, formatSessionSubtitle, PiTraceTimeline, summarizeTrace } from './PiTraceView';
 
@@ -19,6 +20,8 @@ const RERUNNABLE_KINDS = new Set<AgentSessionKind>([
   'read-book',
   'discover-characters',
   'extract-all-characters',
+  'discover-locations',
+  'extract-all-locations',
   'suggest-concept-character',
   'suggest-concept-location',
 ]);
@@ -45,6 +48,14 @@ function kindLabel(kind: AgentSessionKind) {
       return 'Refine character';
     case 'extract-all-characters':
       return 'Extract all characters';
+    case 'discover-locations':
+      return 'Find locations';
+    case 'extract-location':
+      return 'Extract location';
+    case 'refine-location':
+      return 'Refine location';
+    case 'extract-all-locations':
+      return 'Extract all locations';
     case 'suggest-concept-character':
       return 'Character suggest';
     case 'suggest-concept-location':
@@ -84,8 +95,8 @@ function sessionPreviewText(session: AgentSession, trace: PiTraceDocument | null
     return cleanSessionPreview(traceSummary.preview);
   }
   if (session.error) return cleanSessionPreview(session.error);
-  if (session.status === 'running') return 'Pi is working on this session.';
-  if (!session.piSessionId && !session.piSessionFile) return 'No Pi trace captured yet.';
+  if (session.status === 'running') return 'The agent is working on this session.';
+  if (!session.traceId) return 'No trace captured.';
   return 'No messages yet.';
 }
 
@@ -98,7 +109,7 @@ function sessionSubtitle(session: AgentSession, trace: PiTraceDocument | null | 
 }
 
 function sessionSourceText(session: AgentSession) {
-  if (session.kind === 'read-book') return 'Root book-context session used by later Pi tasks.';
+  if (session.kind === 'read-book') return 'Prepared the book context used by later agent tasks.';
   const outputCardId = sourceValue(session.source, 'outputCardId');
   if (outputCardId) return `Created concept card ${outputCardId}.`;
   const outputNodeId = sourceValue(session.source, 'outputNodeId');
@@ -108,7 +119,7 @@ function sessionSourceText(session: AgentSession) {
   if (panelId && promptId) return `Wrote image prompt ${promptId} on ${panelId}.`;
   const subjectKind = sourceValue(session.source, 'subjectKind');
   if (subjectKind) return `Concept Art ${subjectKind} suggestion.`;
-  return 'Pi coding-agent session.';
+  return 'Agent session.';
 }
 
 /** Where "Open" should navigate for a session — its produced artifact, else the kind's home view. */
@@ -124,6 +135,11 @@ function sessionDestination(session: AgentSession): { phase: ProjectPhase; label
     case 'extract-all-characters':
     case 'refine-character':
       return { phase: 'characters-hub', label: 'Open characters' };
+    case 'discover-locations':
+    case 'extract-location':
+    case 'extract-all-locations':
+    case 'refine-location':
+      return { phase: 'locations-hub', label: 'Open locations' };
     case 'suggest-concept-character':
     case 'suggest-concept-location':
       return { phase: 'concept-art', label: 'Open concept art' };
@@ -148,7 +164,7 @@ function formatDuration(session: AgentSession): string | null {
   return `${hrs}h ${mins % 60}m`;
 }
 
-/** One live task in the dashboard strip: attaches to the SSE stream by id. */
+/** One live task in the dashboard strip: subscribes to its event buffer by id. */
 function ActiveTaskCard({
   projectSlug,
   task,
@@ -227,27 +243,26 @@ export function AgentDashboardView({
     void loadSessions();
   }, [loadSessions]);
 
-  // Discover running tasks and keep watching for new ones.
+  // Track running tasks: pick up the ones already active, then listen for new starts.
   useEffect(() => {
     let cancelled = false;
-    const poll = async () => {
-      try {
-        const active = await api.listPiTasks(projectSlug, { active: true });
-        if (cancelled) return;
-        const fresh = active.filter((task) => !trackedIdsRef.current.has(task.taskId));
-        if (fresh.length) {
-          for (const task of fresh) trackedIdsRef.current.add(task.taskId);
-          setTrackedTasks((current) => [...current, ...fresh]);
-        }
-      } catch (err) {
-        console.error('[photo-web] failed to poll pi tasks', err);
-      }
+    const track = (tasks: PiTaskStatus[]) => {
+      const fresh = tasks.filter((task) => task.projectSlug === projectSlug && !trackedIdsRef.current.has(task.taskId));
+      if (!fresh.length) return;
+      for (const task of fresh) trackedIdsRef.current.add(task.taskId);
+      setTrackedTasks((current) => [...current, ...fresh]);
     };
-    void poll();
-    const timer = window.setInterval(() => void poll(), 3000);
+    void api.listPiTasks(projectSlug, { active: true })
+      .then((active) => {
+        if (!cancelled) track(active);
+      })
+      .catch((err) => console.error('[comic-canvas] failed to list agent tasks', err));
+    const unsubscribe = taskManager.onChange((status) => {
+      if (!cancelled && status.state === 'starting') track([status]);
+    });
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      unsubscribe();
     };
   }, [projectSlug]);
 
@@ -286,12 +301,12 @@ export function AgentDashboardView({
       setTrace(cached);
       return;
     }
-    if (!activeSession.piSessionId && !activeSession.piSessionFile) {
+    if (!activeSession.traceId) {
       setTrace(emptyTrace);
       return;
     }
     void loadTrace(activeSession.id);
-  }, [activeSession?.id, activeSession?.piSessionFile, activeSession?.piSessionId, activeSession?.status, loadTrace, traceCache]);
+  }, [activeSession?.id, activeSession?.traceId, activeSession?.status, loadTrace, traceCache]);
 
   // Deep link: select the session a task panel elsewhere pointed at.
   useEffect(() => {
@@ -310,8 +325,8 @@ export function AgentDashboardView({
     if (traceRefreshTimerRef.current !== null) window.clearTimeout(traceRefreshTimerRef.current);
   }, []);
 
-  // Agent session ids equal pi task ids, so a live task's SSE events map
-  // straight onto the session selected in the trace pane: refresh the trace
+  // Agent session ids equal task ids, so a live task's events map straight
+  // onto the session selected in the trace pane: refresh the trace
   // (throttled) as results land instead of polling on a timer.
   const handleTaskEvent = useCallback((taskId: string, record: PiTaskEvent) => {
     const type = record.event.type;
@@ -347,7 +362,7 @@ export function AgentDashboardView({
     setRerunning(true);
     try {
       await api.startPiTask(projectSlug, session.kind, { force: true });
-      // The 3s live-task poll surfaces the new run in the Live lane automatically.
+      // taskManager.onChange surfaces the new run in the Live lane.
     } catch (err) {
       setError(formatRequestError(err));
     } finally {
@@ -571,7 +586,7 @@ export function AgentDashboardView({
                 trace={activeTrace}
                 collapsed={traceCollapsed}
                 isLoading={isTraceLoading}
-                emptyMessage={activeSession.status === 'running' ? 'Waiting for Pi trace events…' : 'No Pi trace yet.'}
+                emptyMessage={activeSession.status === 'running' ? 'Waiting for agent events…' : 'No trace yet.'}
               />
             </>
           ) : (

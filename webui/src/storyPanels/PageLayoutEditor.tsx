@@ -91,6 +91,7 @@ import {
 } from './printLayout';
 
 import type { SinglePagePreviewMode } from './singlePagePreview';
+import { loadAssetImageUrl } from '../shared/assetUrls';
 
 export type StoryPanelLayoutMode = 'spread' | 'single' | 'all-pages';
 
@@ -1369,7 +1370,8 @@ export function PageLayoutEditor({
     if (!panel.activeAssetId) return;
     setIsSnappingAspect(true);
     try {
-      const url = `/api/projects/${projectSlug}/assets/${panel.activeAssetId}/image`;
+      const url = await loadAssetImageUrl(projectSlug, panel.activeAssetId);
+      if (!url) return;
       const { width, height } = await loadImageDimensions(url);
       snapPanelToAspectRatio(panel, formatAspectRatioFromPixels(width, height));
     } finally {

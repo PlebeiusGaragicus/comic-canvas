@@ -8,6 +8,7 @@ import { formatRequestError } from '../formatError';
 import { saveAssetImageToDisk } from '../exportAssets';
 import { useToast } from '../shared/toast';
 import type { Asset, TagDefinition } from '../types';
+import { assetImageUrl, assetThumbnailUrl } from '../shared/assetUrls';
 
 function ImageViewerThumbButton({
   asset,
@@ -22,8 +23,8 @@ function ImageViewerThumbButton({
   previewAbove?: boolean;
   onClick: () => void;
 }) {
-  const thumbUrl = asset.thumbnailUrl ?? `/api/projects/${projectSlug}/assets/${asset.id}/thumb`;
-  const previewUrl = `/api/projects/${projectSlug}/assets/${asset.id}/image`;
+  const thumbUrl = assetThumbnailUrl(projectSlug, asset);
+  const previewUrl = assetImageUrl(projectSlug, asset);
   const wrapRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -160,7 +161,7 @@ export function ImageViewer({
   const isProjectCover = coverAssetId === asset.id;
   const currentVisibleIndex = node ? viewerVariants.findIndex((variant) => variant.id === asset.id) : -1;
   const hasMultipleVariants = viewerVariants.length > 1;
-  const imageUrl = `/api/projects/${projectSlug}/assets/${asset.id}/image`;
+  const imageUrl = assetImageUrl(projectSlug, asset);
   const assetById = new Map(assets.map((asset) => [asset.id, asset]));
   const parentAssets = (asset.generation?.refs ?? []).map((ref) => assetById.get(ref)).filter((asset): asset is Asset => Boolean(asset));
   const childAssets = assets.filter((candidate) => candidate.generation?.refs.includes(asset.id));

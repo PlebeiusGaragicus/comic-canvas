@@ -1,11 +1,13 @@
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures';
+import { seedFixture } from './seed';
 
 /** Console messages that are known noise and safe to ignore. Keep empty unless justified. */
 const CONSOLE_ERROR_ALLOWLIST: RegExp[] = [];
 
 const errors: string[] = [];
 
-test.beforeEach(({ page }) => {
+test.beforeEach(async ({ page }) => {
   errors.length = 0;
   page.on('console', (message) => {
     if (message.type() !== 'error') return;
@@ -15,6 +17,7 @@ test.beforeEach(({ page }) => {
   page.on('pageerror', (error) => {
     errors.push(String(error));
   });
+  await seedFixture(page);
 });
 
 test.afterEach(() => {
@@ -23,18 +26,29 @@ test.afterEach(() => {
 
 async function openFixtureProject(page: Page): Promise<void> {
   await page.goto('/');
-  await page.getByRole('button', { name: 'E2E Fixture' }).click();
+  await page.getByRole('button', { name: 'E2E Fixture', exact: true }).click();
   await expect(page.locator('.project-phase-sidebar')).toBeVisible();
 }
 
 async function settle(page: Page): Promise<void> {
-  await page.waitForLoadState('networkidle');
+  await page.waitForFunction(() => document.body.dataset.appReady === 'true');
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await Promise.all(
+      Array.from(document.images)
+        .filter((image) => !image.complete)
+        .map((image) => new Promise<void>((resolve) => {
+          image.addEventListener('load', () => resolve(), { once: true });
+          image.addEventListener('error', () => resolve(), { once: true });
+        })),
+    );
+  });
   await page.waitForTimeout(400);
 }
 
 test('landing shows the fixture project', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'E2E Fixture' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'E2E Fixture', exact: true })).toBeVisible();
   await settle(page);
   await expect(page).toHaveScreenshot('landing.png');
 });

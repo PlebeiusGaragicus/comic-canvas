@@ -7,6 +7,7 @@ import { PiTaskPanel } from '../sessions/PiTaskPanel';
 import { usePiTask } from '../sessions/usePiTask';
 import { VisualStyleList } from '../visualStyles/VisualStyleList';
 import type { Asset, AdaptationStatus, CanvasDocument, ConceptArtSubjectKind, ConceptCard } from '../types';
+import { assetImageUrl, assetThumbnailUrl } from '../shared/assetUrls';
 
 function conceptCardTag(cardId: string) {
   return `concept-card-${cardId.toLowerCase()}`;
@@ -338,7 +339,7 @@ export function ConceptArtView({
         <div className={clsx('character-hub-thumb', asset && 'has-image')}>
           {asset ? (
             <div className="character-hub-thumb-frame">
-              <img src={asset.thumbnailUrl ?? `/api/projects/${projectSlug}/assets/${asset.id}/thumb`} alt="" />
+              <img src={assetThumbnailUrl(projectSlug, asset)} alt="" />
               <button
                 type="button"
                 className="character-hub-preview-eye"
@@ -508,7 +509,7 @@ export function ConceptArtView({
                       onClick={() => setPreviewAssetId(asset.id)}
                       title={asset.id === editingCard.activeAssetId ? 'Active image — click to view' : 'Click to view'}
                     >
-                      <img src={asset.thumbnailUrl ?? `/api/projects/${projectSlug}/assets/${asset.id}/thumb`} alt="" />
+                      <img src={assetThumbnailUrl(projectSlug, asset)} alt="" />
                       {asset.id === editingCard.activeAssetId && <span className="concept-art-edit-image-active">Active</span>}
                     </button>
                   ))}
@@ -607,7 +608,7 @@ export function ConceptArtView({
           aria-label="Concept art preview"
         >
           <img
-            src={`/api/projects/${projectSlug}/assets/${previewAssetId}/image`}
+            src={assetsById.get(previewAssetId) ? assetImageUrl(projectSlug, assetsById.get(previewAssetId)!) : undefined}
             alt=""
             onClick={(event) => event.stopPropagation()}
           />

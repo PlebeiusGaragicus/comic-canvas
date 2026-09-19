@@ -8,6 +8,7 @@ import { SYSTEM_TAGS, isCharacterCanvasNode, isLocationCanvasNode, partitionAsse
 import { EntityEditModal, type EntityDraft } from './EntityEditModal';
 import { entityDisplayName, entityHubState, entityIsExtracted, slugifyKey, type EntityRecordKind } from './characterShared';
 import type { AdaptationStatus, Asset, CanvasDocument, CanvasNode, EntityVariant, TagDefinition } from '../types';
+import { assetThumbnailUrl } from '../shared/assetUrls';
 
 function latestAssetForVariant(variant: EntityVariant, assetsById: Map<string, Asset>) {
   const assetId = variant.activeAssetId ?? variant.assetIds[variant.assetIds.length - 1];
@@ -354,7 +355,7 @@ export function EntityHubView({
                     >
                       {asset ? (
                         <div className="character-hub-thumb-frame">
-                          <img src={asset.thumbnailUrl ?? `/api/projects/${projectSlug}/assets/${asset.id}/thumb`} alt="" />
+                          <img src={assetThumbnailUrl(projectSlug, asset)} alt="" />
                           {taggedImages.length > 1 && (
                             <div className="character-hub-thumb-nav" onClick={(event) => event.stopPropagation()}>
                               <button

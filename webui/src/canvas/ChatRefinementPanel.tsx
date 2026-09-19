@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { assetLabel, capabilitiesForModel, defaultDraftParams, modelCapabilities, normalizedParamsForModel } from './shared';
 import type { Asset, ChatSession, ChatTurnSettings } from '../types';
+import { assetThumbnailUrl } from '../shared/assetUrls';
 
 export function ChatRefinementPanel({
   session,
@@ -63,7 +64,7 @@ export function ChatRefinementPanel({
         <h3>Source</h3>
         {assetById.get(session.source.assetId) && (
           <button className="asset-picker-row" onClick={() => onViewAsset(session.source.assetId)}>
-            <img src={assetById.get(session.source.assetId)?.thumbnailUrl ?? `/api/projects/${projectSlug}/assets/${session.source.assetId}/thumb`} alt="" />
+            <img src={assetThumbnailUrl(projectSlug, assetById.get(session.source.assetId)!)} alt="" />
             <span>{assetLabel(assetById.get(session.source.assetId))}</span>
           </button>
         )}
@@ -81,7 +82,7 @@ export function ChatRefinementPanel({
                   const asset = assetById.get(attachment.assetId);
                   return asset ? (
                     <button key={attachment.assetId} className="chat-thumb" onClick={() => onViewAsset(asset.id)} title={assetLabel(asset)}>
-                      <img src={asset.thumbnailUrl ?? `/api/projects/${projectSlug}/assets/${asset.id}/thumb`} alt="" />
+                      <img src={assetThumbnailUrl(projectSlug, asset)} alt="" />
                     </button>
                   ) : null;
                 })}
@@ -93,7 +94,7 @@ export function ChatRefinementPanel({
                   const asset = assetById.get(assetId);
                   return asset ? (
                     <button key={assetId} className="chat-thumb generated" onClick={() => onViewAsset(assetId)} title={assetLabel(asset)}>
-                      <img src={asset.thumbnailUrl ?? `/api/projects/${projectSlug}/assets/${assetId}/thumb`} alt="" />
+                      <img src={assetThumbnailUrl(projectSlug, asset)} alt="" />
                     </button>
                   ) : null;
                 })}
@@ -132,7 +133,7 @@ export function ChatRefinementPanel({
             const asset = assetById.get(assetId);
             return asset ? (
               <div className="parent-item" key={assetId}>
-                <img src={asset.thumbnailUrl ?? `/api/projects/${projectSlug}/assets/${assetId}/thumb`} alt="" />
+                <img src={assetThumbnailUrl(projectSlug, asset)} alt="" />
                 <span>{assetLabel(asset)}</span>
                 <button className="parent-remove" disabled={isSending} onClick={() => setAttachmentAssetIds((current) => current.filter((id) => id !== assetId))}>×</button>
               </div>

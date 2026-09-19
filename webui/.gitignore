@@ -1,7 +1,4 @@
 node_modules/
 dist/
 *.tsbuildinfo
-e2e/.library/
-e2e/.trash/
 e2e/test-results/
-e2e/.fixture.json

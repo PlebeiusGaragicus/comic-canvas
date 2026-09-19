@@ -84,6 +84,4 @@ export function pickerTagCounts(
   };
 }
 
-export function assetThumbnailUrl(projectSlug: string, asset: Asset): string {
-  return asset.thumbnailUrl ?? `/api/projects/${projectSlug}/assets/${asset.id}/thumb`;
-}
+export { assetThumbnailUrl } from '../shared/assetUrls';

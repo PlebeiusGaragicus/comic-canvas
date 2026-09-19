@@ -10,6 +10,7 @@ import { assetImagePath, assetThumbnailPath, writeAssetMetadata } from './assets
 import { canonicalRefsForTags } from './tags';
 import { attachGeneratedAssetsToCanvas, validateRefs } from './canvas';
 import { visualStylePrompt } from './visualStyles';
+import { attachAssetsToPanel } from './storyPanels';
 import { readSettings } from './settings';
 import { imageOps } from '../shared/images';
 import { referenceImageLimit, validateModelCapabilities, type ImageProvider, type ReferenceImage } from '../providers/gemini';
@@ -126,7 +127,8 @@ export async function createGeneratedAssets(
     created.push(await writeAssetMetadata(slug, metadata));
   }
   if (payload.canvasNodeId) {
-    await attachGeneratedAssetsToCanvas(slug, payload.canvasNodeId, created);
+    const { panelId } = await attachGeneratedAssetsToCanvas(slug, payload.canvasNodeId, created);
+    if (panelId) await attachAssetsToPanel(slug, panelId, created.map((asset) => asset.id));
   }
   return { assets: created };
 }
