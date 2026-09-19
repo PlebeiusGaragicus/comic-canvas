@@ -11,44 +11,96 @@
   position: relative;
 }
 
+.settings-modal {
+  width: min(720px, 92vw);
+}
+
 .settings-modal-body {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  min-width: min(480px, 80vw);
+  gap: var(--space-5, 20px);
   max-height: 70vh;
   overflow-y: auto;
+  padding-right: var(--space-1, 4px);
 }
 
 .settings-section h3 {
-  margin: 0 0 6px;
-  font-size: 14px;
+  margin: 0 0 var(--space-2, 6px);
+  font-size: var(--text-sm, 14px);
 }
 
 .settings-key-row {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-2, 8px);
 }
 
 .settings-key-row input {
   flex: 1;
 }
 
-.settings-checks {
-  list-style: none;
-  margin: 8px 0 0;
-  padding: 0;
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3, 12px);
+  margin-top: var(--space-3, 12px);
+}
+
+.settings-grid label {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
+  gap: var(--space-1, 4px);
+  font-size: var(--text-xs, 12px);
+  color: var(--text-secondary);
 }
 
-.settings-checks li.is-missing strong {
-  color: var(--danger, #c0392b);
+.settings-grid input,
+.settings-grid select {
+  width: 100%;
 }
 
-.settings-checks li.is-ok strong {
-  color: var(--success, #2e7d32);
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-3, 12px);
+}
+
+.settings-endpoint {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  padding: var(--space-3, 12px);
+  margin-top: var(--space-3, 12px);
+  background: var(--bg-surface);
+}
+
+.settings-endpoint .settings-grid {
+  margin-top: 0;
+}
+
+.settings-models {
+  width: 100%;
+  margin-top: var(--space-3, 12px);
+  border-collapse: collapse;
+  font-size: var(--text-xs, 12px);
+}
+
+.settings-models th,
+.settings-models td {
+  text-align: left;
+  padding: var(--space-1, 4px) var(--space-2, 8px);
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-models input[type='number'] {
+  width: 110px;
+}
+
+.settings-inline-button {
+  --btn-pad: 2px 8px;
+}
+
+.settings-danger {
+  --btn-fg: var(--danger, #ef4444);
+  --btn-border: var(--danger, #ef4444);
 }
