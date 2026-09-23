@@ -71,6 +71,19 @@ export function BookTextView({
   const refinePromptTask = usePiTask(projectSlug, 'refine-panel-prompt', onPromptTaskFinished);
   const promptTaskBusy = draftPromptTask.isActive || refinePromptTask.isActive;
 
+  // Chunking creates panels as tool calls land; reload on each so they appear in place.
+  const chunkTask = usePiTask(
+    projectSlug,
+    'chunk-panels',
+    async () => { await reload(); },
+    async () => { await reload(); },
+  );
+  const chunkSelection = async () => {
+    if (!selection) return;
+    await chunkTask.start({ target: `${selection.startOffset}:${selection.endOffset}` });
+    setSelection(null);
+  };
+
   // Canonical entity slugs for the panel editor's "who and where" chips.
   const [adaptationStatus, setAdaptationStatus] = useState<AdaptationStatus | null>(null);
   useEffect(() => {
@@ -347,6 +360,17 @@ export function BookTextView({
           onOpenSession={draftPromptTask.taskId ? () => onOpenAgentSession(draftPromptTask.taskId!) : undefined}
         />
       )}
+      {chunkTask.state !== null && (
+        <PiTaskPanel
+          title="Chunk panels"
+          state={chunkTask.state}
+          events={chunkTask.events}
+          error={chunkTask.error}
+          onAbort={() => void chunkTask.abort()}
+          onDismiss={chunkTask.dismiss}
+          onOpenSession={chunkTask.taskId ? () => onOpenAgentSession(chunkTask.taskId!) : undefined}
+        />
+      )}
       {refinePromptTask.state !== null && (
         <PiTaskPanel
           title="Refine panel prompt"
@@ -377,6 +401,7 @@ export function BookTextView({
   return (
     <div className="story-adaptation-screen story-panels-screen story-view-screen">
       {error && <p className="error error-banner story-view-error">{error}</p>}
+      {chunkTask.error && chunkTask.state === null && <p className="error error-banner story-view-error">{chunkTask.error}</p>}
       {promptTaskPanels}
       <div
         className={[
@@ -394,6 +419,7 @@ export function BookTextView({
               onSelectionChange={setSelection}
               onCreatePanel={createPanel}
               onCreateBookmark={createBookmark}
+              onChunkSelection={chunkTask.isActive ? undefined : chunkSelection}
               onDeletePanel={handleDeletePanel}
               onAdjustPanelRange={adjustPanelRange}
               onFocusPanelChunk={focusPanelChunk}

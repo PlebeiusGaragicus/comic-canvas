@@ -319,6 +319,11 @@ export interface StoryPanelImagePrompt {
   text: string;
 }
 
+/** Camera framing decided when the passage was chunked into panels. */
+export type StoryPanelShot = 'establishing' | 'wide' | 'medium' | 'close-up' | 'extreme-close-up' | 'insert' | 'two-shot';
+/** Relative page weight the panel wants; consumed by layout, not by placement math yet. */
+export type StoryPanelSizeHint = 'small' | 'medium' | 'large' | 'splash' | 'spread';
+
 export interface StoryPanel {
   id: string;
   order: number;
@@ -349,6 +354,8 @@ export interface StoryPanel {
   imagePrompts: StoryPanelImagePrompt[];
   characterSlugs: string[];
   locationSlug?: string | null;
+  shot: StoryPanelShot | null;
+  sizeHint: StoryPanelSizeHint | null;
   finalized: boolean;
 }
 
@@ -374,6 +381,10 @@ export interface StoryPanelCreatePayload {
   panelKind?: 'image' | 'text';
   rect?: StoryPanelRect | null;
   layer?: number;
+  shot?: StoryPanelShot | null;
+  sizeHint?: StoryPanelSizeHint | null;
+  characterSlugs?: string[];
+  locationSlug?: string | null;
 }
 
 export interface StoryPanelBookmarkCreatePayload {
@@ -385,7 +396,7 @@ export interface StoryPanelBookmarkCreatePayload {
 }
 
 export type StoryPanelPatchPayload = Partial<
-  Pick<StoryPanel, 'order' | 'title' | 'sourceKind' | 'startOffset' | 'endOffset' | 'selectedText' | 'storyText' | 'visibleText' | 'richText' | 'textStyle' | 'pageId' | 'panelKind' | 'spansSpread' | 'rect' | 'layer' | 'parentPanelId' | 'assetIds' | 'activeAssetId' | 'aspectRatio' | 'aspectRatioLocked' | 'imageCrop' | 'captions' | 'imagePrompts' | 'characterSlugs' | 'locationSlug' | 'finalized'>
+  Pick<StoryPanel, 'order' | 'title' | 'sourceKind' | 'startOffset' | 'endOffset' | 'selectedText' | 'storyText' | 'visibleText' | 'richText' | 'textStyle' | 'pageId' | 'panelKind' | 'spansSpread' | 'rect' | 'layer' | 'parentPanelId' | 'assetIds' | 'activeAssetId' | 'aspectRatio' | 'aspectRatioLocked' | 'imageCrop' | 'captions' | 'imagePrompts' | 'characterSlugs' | 'locationSlug' | 'shot' | 'sizeHint' | 'finalized'>
 >;
 
 export interface AdaptationCanvasImportResponse {
@@ -522,7 +533,8 @@ export type AgentSessionKind =
   | 'suggest-concept-character'
   | 'suggest-concept-location'
   | 'draft-panel-prompt'
-  | 'refine-panel-prompt';
+  | 'refine-panel-prompt'
+  | 'chunk-panels';
 
 export type PiTaskProfile =
   | 'read-book'
@@ -537,7 +549,8 @@ export type PiTaskProfile =
   | 'suggest-concept-character'
   | 'suggest-concept-location'
   | 'draft-panel-prompt'
-  | 'refine-panel-prompt';
+  | 'refine-panel-prompt'
+  | 'chunk-panels';
 
 export type PiTaskState = 'starting' | 'running' | 'aborting' | 'done' | 'failed' | 'cancelled';
 

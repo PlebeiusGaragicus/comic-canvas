@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/react';
 import { formatRequestError } from '../formatError';
 import { menuKeyboardHandlers, useDismissOnOutsidePointerDown } from '../shared/popover';
-import type { StoryPanel, StoryPanelCaption, StoryPanelImagePrompt, StoryPanelPage, StoryPanelPatchPayload } from '../types';
+import type { StoryPanel, StoryPanelCaption, StoryPanelImagePrompt, StoryPanelPage, StoryPanelPatchPayload, StoryPanelShot, StoryPanelSizeHint } from '../types';
+import { PANEL_SHOTS, PANEL_SIZE_HINTS } from '../services/storyPanels';
 import { defaultCaptionTextStyle } from './captionPanelStyle';
 import { panelIsPlacedOnLayout } from './panelPlacement';
 import { storyPagePlacementLabel } from './pageNumbers';
@@ -408,6 +409,8 @@ export function PanelChunkList({
   const [panelEditorPanelId, setPanelEditorPanelId] = useState<string | null>(null);
   const [panelEditorTitle, setPanelEditorTitle] = useState('');
   const [panelEditorKind, setPanelEditorKind] = useState<StoryPanel['panelKind']>('image');
+  const [panelEditorShot, setPanelEditorShot] = useState<StoryPanelShot | null>(null);
+  const [panelEditorSizeHint, setPanelEditorSizeHint] = useState<StoryPanelSizeHint | null>(null);
   const [panelEditorStoryText, setPanelEditorStoryText] = useState('');
   const [panelEditorVisibleText, setPanelEditorVisibleText] = useState('');
   const [captionDrafts, setCaptionDrafts] = useState<StoryPanelCaption[]>([]);
@@ -500,6 +503,8 @@ export function PanelChunkList({
     setPanelEditorPanelId(panel.id);
     setPanelEditorTitle(panel.title.trim());
     setPanelEditorKind(panel.panelKind);
+    setPanelEditorShot(panel.shot ?? null);
+    setPanelEditorSizeHint(panel.sizeHint ?? null);
     setPanelEditorStoryText(usefulStoryText(panel));
     setPanelEditorVisibleText(usefulVisibleText(panel));
     setCaptionDrafts((panel.captions ?? []).map((caption) => ({ ...caption, textStyle: { ...caption.textStyle }, rect: { ...caption.rect } })));
@@ -554,6 +559,8 @@ export function PanelChunkList({
     setPanelEditorPanelId(null);
     setPanelEditorTitle('');
     setPanelEditorKind('image');
+    setPanelEditorShot(null);
+    setPanelEditorSizeHint(null);
     setPanelEditorStoryText('');
     setPanelEditorVisibleText('');
     setCaptionDrafts([]);
@@ -587,6 +594,8 @@ export function PanelChunkList({
       await onSavePanelEdit(panelEditorPanelId, {
         title: panelEditorTitle.trim(),
         panelKind: panelEditorKind,
+        shot: panelEditorShot,
+        sizeHint: panelEditorSizeHint,
         storyText: isBookLinked(panelEditorPanel) ? panelEditorPanel.selectedText : panelEditorStoryText.trim(),
         visibleText: panelEditorVisibleText.trim(),
         richText: plainTextToRichText(panelEditorVisibleText.trim()),
@@ -762,6 +771,9 @@ export function PanelChunkList({
                 ) : !manualMode && panel.startOffset !== null && panel.endOffset !== null ? (
                   <span className="story-panels-chunk-range">{panel.startOffset}-{panel.endOffset}</span>
                 ) : null}
+                {isPanel(panel) && panel.shot && (
+                  <span className="story-panels-chunk-shot" title={panel.sizeHint ? `${panel.shot} shot, ${panel.sizeHint} panel` : `${panel.shot} shot`}>{panel.shot}</span>
+                )}
                 {showPlacement && (
                   <PlacementBadge
                     panel={panel}
@@ -919,6 +931,24 @@ export function PanelChunkList({
                 </div>
               </div>
             </div>
+            {panelEditorKind === 'image' && (
+              <div className="story-panels-panel-editor-framing">
+                <label className="story-panels-panel-editor-field">
+                  Shot
+                  <select value={panelEditorShot ?? ''} disabled={isCreating} onChange={(event) => setPanelEditorShot((event.target.value || null) as StoryPanelShot | null)}>
+                    <option value="">Not set</option>
+                    {PANEL_SHOTS.map((shot) => <option key={shot} value={shot}>{shot}</option>)}
+                  </select>
+                </label>
+                <label className="story-panels-panel-editor-field">
+                  Size
+                  <select value={panelEditorSizeHint ?? ''} disabled={isCreating} onChange={(event) => setPanelEditorSizeHint((event.target.value || null) as StoryPanelSizeHint | null)}>
+                    <option value="">Not set</option>
+                    {PANEL_SIZE_HINTS.map((size) => <option key={size} value={size}>{size}</option>)}
+                  </select>
+                </label>
+              </div>
+            )}
             <div className="story-panels-panel-editor-text-grid">
               <label className="story-panels-panel-editor-field">
                 Story text

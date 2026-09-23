@@ -15,6 +15,8 @@ import type {
   StoryPanelPageSettings,
   StoryPanelPatchPayload,
   StoryPanelRect,
+  StoryPanelShot,
+  StoryPanelSizeHint,
   StoryPanelTextStyle,
 } from '../types';
 import { getProjectDoc, putProjectDoc } from '../store/db';
@@ -41,6 +43,10 @@ const SPEECH_KINDS: ReadonlySet<string> = new Set(['dialogue', 'narration']);
 const BACKGROUNDS: ReadonlySet<string> = new Set(['transparent', 'white']);
 const SOURCE_KINDS: ReadonlySet<string> = new Set(['panel', 'bookmark']);
 const PANEL_KINDS: ReadonlySet<string> = new Set(['image', 'text']);
+export const PANEL_SHOTS: readonly StoryPanelShot[] = ['establishing', 'wide', 'medium', 'close-up', 'extreme-close-up', 'insert', 'two-shot'];
+export const PANEL_SIZE_HINTS: readonly StoryPanelSizeHint[] = ['small', 'medium', 'large', 'splash', 'spread'];
+const SHOT_SET: ReadonlySet<string> = new Set(PANEL_SHOTS);
+const SIZE_HINT_SET: ReadonlySet<string> = new Set(PANEL_SIZE_HINTS);
 const BACKUP_PREFIX = 'panels.json.bak-';
 const BACKUPS_TO_KEEP = 3;
 
@@ -110,6 +116,14 @@ function optionalBool(raw: Raw, key: string, fallback: boolean, label: string): 
   const value = raw[key];
   if (value === undefined || value === null) return fallback;
   if (typeof value !== 'boolean') throw invalid(`${label}.${key} must be a boolean`);
+  return value;
+}
+
+/** Optional enum field: missing or null stays null; anything else must be one of `allowed`. */
+function nullableEnum(raw: Raw, key: string, allowed: ReadonlySet<string>, label: string): string | null {
+  const value = raw[key];
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string' || !allowed.has(value)) throw invalid(`${label}.${key} must be one of ${[...allowed].join(', ')}`);
   return value;
 }
 
@@ -251,6 +265,8 @@ export function validatePanel(value: unknown): StoryPanel {
     imagePrompts: Array.isArray(raw.imagePrompts) ? raw.imagePrompts.map(validateImagePrompt) : [],
     characterSlugs: stringList(raw, 'characterSlugs', 'panel'),
     locationSlug: raw.locationSlug === undefined || raw.locationSlug === null ? null : optionalString(raw, 'locationSlug', '', 'panel'),
+    shot: nullableEnum(raw, 'shot', SHOT_SET, 'panel') as StoryPanelShot | null,
+    sizeHint: nullableEnum(raw, 'sizeHint', SIZE_HINT_SET, 'panel') as StoryPanelSizeHint | null,
     finalized: optionalBool(raw, 'finalized', false, 'panel'),
   };
   if (raw.captions !== undefined && raw.captions !== null && !Array.isArray(raw.captions)) throw invalid('panel.captions must be a list');
@@ -656,6 +672,9 @@ export async function createPanel(slug: string, payload: StoryPanelCreatePayload
   const layer = payload.layer ?? 0;
   if (!Number.isInteger(layer) || layer < 0) throw invalid('Panel layer must be a non-negative integer');
   const imagePrompts = (payload.imagePrompts ?? []).map(validateImagePrompt);
+  const characterSlugs = payload.characterSlugs ?? [];
+  const locationSlug = payload.locationSlug ?? null;
+  if (characterSlugs.length || locationSlug) await validatePanelEntities(slug, characterSlugs, locationSlug);
 
   const document = await readDocument(slug);
   const hasBookOffsets = startOffset !== null && endOffset !== null;
@@ -708,10 +727,28 @@ export async function createPanel(slug: string, payload: StoryPanelCreatePayload
       panelKind: payload.panelKind ?? 'image',
       rect,
       layer,
+      shot: payload.shot ?? null,
+      sizeHint: payload.sizeHint ?? null,
+      characterSlugs,
+      locationSlug,
     }),
   );
   if (hasBookOffsets) validateStoryOverlaps(document);
   return saveDocument(slug, document);
+}
+
+/** Sub-ranges of [start, end) that no book-linked panel covers, in book order. */
+export function unclaimedRanges(document: StoryPanelDocument, start: number, end: number): Array<[number, number]> {
+  const gaps: Array<[number, number]> = [];
+  let cursor = start;
+  for (const [rangeStart, rangeEnd] of storyRanges(document)) {
+    if (rangeEnd <= cursor) continue;
+    if (rangeStart >= end) break;
+    if (rangeStart > cursor) gaps.push([cursor, rangeStart]);
+    cursor = Math.max(cursor, rangeEnd);
+  }
+  if (cursor < end) gaps.push([cursor, end]);
+  return gaps;
 }
 
 export async function createBookmark(slug: string, payload: StoryPanelBookmarkCreatePayload): Promise<StoryPanelDocument> {

@@ -236,6 +236,79 @@ describe('draft-panel-prompt', () => {
   });
 });
 
+describe('chunk-panels', () => {
+  const PASSAGE = 'Hero walked into the red barn. Villain was waiting there, smiling. "You came," said Villain.';
+
+  async function ready(): Promise<Faux> {
+    await configureModel();
+    await seedBook(PASSAGE);
+    const faux = useFaux(taskManager);
+    await run(taskManager, 'read-book');
+    return faux;
+  }
+
+  it('prechecks the range target, the book session and unclaimed text', async () => {
+    await configureModel();
+    await seedBook(PASSAGE);
+    await expect(taskManager.startTask(FARM, 'chunk-panels', taskArgs())).rejects.toThrow(/startOffset:endOffset/);
+    await expect(taskManager.startTask(FARM, 'chunk-panels', taskArgs({ target: '10:5' }))).rejects.toThrow(/end after it starts/);
+    await expect(taskManager.startTask(FARM, 'chunk-panels', taskArgs({ target: `0:${PASSAGE.length}` }))).rejects.toThrow(/Load book session/);
+    await run(taskManager, 'read-book');
+    await expect(taskManager.startTask(FARM, 'chunk-panels', taskArgs({ target: '0:9999' }))).rejects.toThrow(/exceeds the book length/);
+    await createPanel(FARM, { startOffset: 0, endOffset: 30, autoPlace: false });
+    await expect(taskManager.startTask(FARM, 'chunk-panels', taskArgs({ target: '0:30' }))).rejects.toSatisfy((e) => isServiceError(e, 'conflict'));
+  });
+
+  it('carves panels in order from quoted boundaries, tags the cast, and rejects overlaps with a usable message', async () => {
+    const faux = await ready();
+    await createCharacter(FARM, { name: 'Hero', summary: 'The farm hand.' });
+    await createPanel(FARM, { startOffset: 31, endOffset: 66, title: 'Manual middle', autoPlace: false });
+    faux.setResponses([
+      // Runs from the cursor into the manual panel: the tool refuses and names it.
+      fauxAssistantMessage([fauxToolCall('create_story_panel', { endText: 'said Villain', title: 'Too greedy', shot: 'wide', sizeHint: 'medium' })], { stopReason: 'toolUse' }),
+      fauxAssistantMessage([fauxToolCall('create_story_panel', { endText: 'red barn', title: 'Hero enters', shot: 'establishing', sizeHint: 'large', characterSlugs: ['hero'] })], { stopReason: 'toolUse' }),
+      fauxAssistantMessage([fauxToolCall('create_story_panel', { endText: 'said Villain', title: 'You came', shot: 'close-up', sizeHint: 'small' })], { stopReason: 'toolUse' }),
+      fauxAssistantMessage([fauxText('Chunked 2 panels.')]),
+    ]);
+    const { status, events, taskId } = await run(taskManager, 'chunk-panels', { target: `0:${PASSAGE.length}`, instructions: 'Two panels.' });
+    expect(status.state).toBe('done');
+    const toolEnds = events.filter((r) => r.event.type === 'tool_end');
+    expect(toolEnds[0].event.isError).toBe(true);
+    expect(String(toolEnds[0].event.result)).toMatch(/overlaps existing panels \(panel-\d+ \\"Manual middle\\"\)/);
+    expect(String(toolEnds[1].event.result)).toContain('Remaining unchunked text starts:');
+    expect(String(toolEnds[1].event.result)).toContain('You came');
+    expect(String(toolEnds[2].event.result)).toContain('Nothing left in the passage');
+    const panels = (await readDocument(FARM)).panels.filter((p) => p.sourceKind === 'panel' && p.startOffset !== null).sort((a, b) => a.startOffset! - b.startOffset!);
+    expect(panels.map((p) => [p.title, p.selectedText, p.shot, p.sizeHint, p.pageId])).toEqual([
+      ['Hero enters', 'Hero walked into the red barn.', 'establishing', 'large', null],
+      ['Manual middle', 'Villain was waiting there, smiling.', null, null, null],
+      ['You came', '"You came," said Villain.', 'close-up', 'small', null],
+    ]);
+    expect(panels[0].characterSlugs).toEqual(['hero']);
+    const session = await readSession(FARM, taskId);
+    expect(session.source).toMatchObject({ rangeStart: 0, rangeEnd: PASSAGE.length, panelIds: [panels[0].id, panels[2].id] });
+    const trace = await readTraceDocument(FARM, taskId);
+    expect(trace?.steps[0].seededMessages).toBe(2);
+    const userPrompt = trace?.steps[0].messages[2] as { content: Array<{ text: string }> };
+    expect(userPrompt.content[0].text).toContain('User guidance (follow it):\nTwo panels.');
+    expect(userPrompt.content[0].text).toContain('Panels already inside the passage');
+    expect(userPrompt.content[0].text).toContain('- [hero] Hero: The farm hand.');
+    expect(userPrompt.content[0].text).toContain(`<passage>\n${PASSAGE}\n</passage>`);
+  });
+
+  it('fails naming the tool when nothing was carved', async () => {
+    const faux = await ready();
+    faux.setResponses([
+      fauxAssistantMessage([fauxText('I would split this into three.')]),
+      fauxAssistantMessage([fauxText('Still talking.')]),
+      fauxAssistantMessage([fauxText('Nope.')]),
+    ]);
+    const { status } = await run(taskManager, 'chunk-panels', { target: '0:30' });
+    expect(status.state).toBe('failed');
+    expect(status.error).toBe('Agent finished without calling create_story_panel');
+  });
+});
+
 describe('reload sweep', () => {
   it('marks ledger rows still running from a previous page load as failed', async () => {
     await createSession(FARM, { kind: 'discover-characters', title: 'Find characters', sessionId: 'stale' });
@@ -247,9 +320,9 @@ describe('reload sweep', () => {
     expect(session.completedAt).toBeTruthy();
   });
 
-  it('registers all thirteen profiles', () => {
+  it('registers all fourteen profiles', () => {
     expect(Object.keys(PROFILES).sort()).toEqual([
-      'discover-characters', 'discover-locations', 'draft-panel-prompt', 'extract-all-characters', 'extract-all-locations',
+      'chunk-panels', 'discover-characters', 'discover-locations', 'draft-panel-prompt', 'extract-all-characters', 'extract-all-locations',
       'extract-character', 'extract-location', 'read-book', 'refine-character', 'refine-location', 'refine-panel-prompt',
       'suggest-concept-character', 'suggest-concept-location',
     ]);

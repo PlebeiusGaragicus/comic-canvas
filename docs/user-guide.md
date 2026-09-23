@@ -84,8 +84,14 @@ no reference asset yet.
 
 ## 6. Create panels — Story view
 
-Highlight passages in the book text to carve them into panels. Panels are
-human-led; you decide the beats. Place panels onto pages in the **Layout** view.
+Highlight passages in the book text to carve them into panels. You decide the
+beats, or hand a passage to the agent: highlight a section (a scene or part
+of a chapter, not the whole book) and choose **Chunk with pi**. It creates
+one panel per visual beat inside the selection, skips text that is already a
+panel, and records a shot (establishing, wide, medium, close-up, extreme
+close-up, insert, two-shot) and a size hint on each. Both are editable in the
+panel editor and feed the prompt drafter's composition. Chunked panels start
+unplaced; place them onto pages in the **Layout** view.
 
 ## 7. Draft panel prompts — Story or Layout view (panel editor)
 

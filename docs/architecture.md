@@ -99,7 +99,11 @@ ledger rows still `running` are marked failed ("Interrupted by reload").
 Profiles: `read-book`, `discover-characters`/`-locations`,
 `extract-character`/`-location`, `extract-all-*`, `refine-*`,
 `suggest-concept-character`/`-location`, `draft-panel-prompt`,
-`refine-panel-prompt`. The record plumbing is one kind-parameterised
+`refine-panel-prompt`, `chunk-panels`. Chunking takes a selected book range
+(`start:end` offsets) and creates panels through `create_story_panel`; the
+model quotes each panel's closing words and the tool resolves them to
+offsets, refusing overlaps with existing panels. Each panel records a `shot`
+and `sizeHint` that the prompt drafter reads as its composition. The record plumbing is one kind-parameterised
 implementation (`agent/profiles/entities.ts`).
 
 ## Canvas model

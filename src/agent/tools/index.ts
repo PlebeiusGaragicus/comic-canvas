@@ -241,3 +241,101 @@ export function replacePanelImagePromptTool(slug: string): AgentTool {
     },
   });
 }
+
+// --- chunk panels ----------------------------------------------------------------------
+
+import { createPanel, readBook, readDocument, unclaimedRanges, PANEL_SHOTS, PANEL_SIZE_HINTS } from '../../services/storyPanels';
+import { ChunkRangeError, normalizeForMatch, resolveChunkRange, type NormalizedText } from '../chunkRange';
+
+/** Shared between the chunk-panels step and its tool: the passage, the
+ *  read cursor that advances as panels land, and what was created. */
+export interface ChunkSession {
+  rangeStart: number;
+  rangeEnd: number;
+  cursor: number;
+  createdIds: string[];
+  book?: { text: string; normalized: NormalizedText };
+}
+
+const REMAINING_PREVIEW = 160;
+
+/** First unclaimed gap that holds more than whitespace. */
+function nextTextGap(bookText: string, gaps: Array<[number, number]>): [number, number] | null {
+  return gaps.find(([from, to]) => bookText.slice(from, to).trim().length > 0) ?? null;
+}
+
+export function createStoryPanelTool(slug: string, session: ChunkSession): AgentTool {
+  return defineTool({
+    name: 'create_story_panel',
+    label: 'Create story panel',
+    description:
+      'Carve the next panel out of the passage. Panels are created in reading order: each one starts where the previous ended ' +
+      '(or at the quoted startText when you deliberately skip text) and ends at the quoted endText. Quote words exactly as they appear. ' +
+      'Call once per panel.',
+    parameters: Type.Object({
+      endText: Type.String({ description: 'The exact last few words of this panel (4-10 words, verbatim from the passage)' }),
+      startText: Type.Optional(Type.String({ description: 'Only when skipping text: the exact first few words of this panel. Omit to continue from the previous panel.' })),
+      title: Type.String({ description: 'Short beat label, 2-6 words, e.g. "Hero enters the barn"' }),
+      shot: StringEnum(PANEL_SHOTS, { description: 'Camera framing for this beat' }),
+      sizeHint: StringEnum(PANEL_SIZE_HINTS, { description: 'How much page the panel deserves' }),
+      characterSlugs: Type.Optional(Type.Array(Type.String(), { description: 'Registered character slugs visible in this panel, from the context list only' })),
+      locationSlug: Type.Optional(Type.String({ description: 'Registered location slug for the setting, from the context list only' })),
+    }),
+    executionMode: 'sequential',
+    async execute(_id, params) {
+      if (!session.book) {
+        const text = await readBook(slug);
+        session.book = { text, normalized: normalizeForMatch(text) };
+      }
+      const { text: bookText, normalized } = session.book;
+      const document = await readDocument(slug);
+      // Continue after any panel that already claims the text at the cursor.
+      const gap = nextTextGap(bookText, unclaimedRanges(document, session.cursor, session.rangeEnd));
+      if (!gap) throw new ChunkRangeError('The passage is fully chunked; there is no unclaimed text left. Reply with the closing sentence.');
+      const cursor = gap[0];
+      let start: number;
+      let end: number;
+      try {
+        [start, end] = resolveChunkRange({
+          bookText,
+          book: normalized,
+          rangeStart: session.rangeStart,
+          rangeEnd: session.rangeEnd,
+          cursor,
+          startText: params.startText,
+          endText: params.endText,
+        });
+      } catch (error) {
+        if (error instanceof ChunkRangeError) throw new Error(`${error.message} Unclaimed text starts: "${bookText.slice(cursor, cursor + REMAINING_PREVIEW).trim()}"`);
+        throw error;
+      }
+      const overlapping = document.panels.filter(
+        (panel) => panel.sourceKind === 'panel' && panel.startOffset !== null && panel.endOffset !== null && panel.startOffset < end && panel.endOffset > start,
+      );
+      if (overlapping.length) {
+        const described = overlapping.map((panel) => `${panel.id} "${panel.title || bookText.slice(panel.startOffset!, panel.endOffset!).slice(0, 40)}"`).join(', ');
+        throw new Error(`That span overlaps existing panels (${described}). End this panel before they begin, or skip past them with startText.`);
+      }
+      const next = await createPanel(slug, {
+        startOffset: start,
+        endOffset: end,
+        title: params.title,
+        shot: params.shot,
+        sizeHint: params.sizeHint,
+        characterSlugs: params.characterSlugs ?? [],
+        locationSlug: params.locationSlug ?? null,
+        autoPlace: false,
+      });
+      const created = next.panels.find((panel) => panel.sourceKind === 'panel' && panel.startOffset === start && panel.endOffset === end);
+      if (!created) throw new Error('Panel was not created');
+      session.cursor = end;
+      session.createdIds.push(created.id);
+      const remaining = nextTextGap(bookText, unclaimedRanges(next, end, session.rangeEnd));
+      const remainingText = remaining ? bookText.slice(remaining[0], remaining[1]).trim() : '';
+      const tail = remainingText
+        ? `Remaining unchunked text starts: "${remainingText.slice(0, REMAINING_PREVIEW)}${remainingText.length > REMAINING_PREVIEW ? '…' : ''}"`
+        : 'Nothing left in the passage. Reply with the closing sentence.';
+      return textResult(`Created ${created.id} (${start}-${end}, ${params.shot}, ${params.sizeHint}). ${tail}`);
+    },
+  });
+}

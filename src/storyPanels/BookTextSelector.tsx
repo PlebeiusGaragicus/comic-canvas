@@ -65,6 +65,7 @@ export function BookTextSelector({
   onSelectionChange,
   onCreatePanel,
   onCreateBookmark,
+  onChunkSelection,
   onDeletePanel,
   onAdjustPanelRange,
   onFocusPanelChunk,
@@ -77,6 +78,8 @@ export function BookTextSelector({
   onSelectionChange: (selection: TextSelectionRange | null) => void;
   onCreatePanel: (options?: { openEditor?: boolean }) => Promise<void>;
   onCreateBookmark: () => Promise<void>;
+  /** Hand the selection to the chunk-panels agent; absent while a chunk task runs. */
+  onChunkSelection?: () => Promise<void>;
   onDeletePanel: (panelId: string) => void | Promise<void>;
   onAdjustPanelRange: (panelId: string, startOffset: number, endOffset: number) => void;
   onFocusPanelChunk: (panelId: string) => void;
@@ -325,6 +328,21 @@ export function BookTextSelector({
               >
                 Bookmark
               </button>
+              {onChunkSelection && (
+                <button
+                  type="button"
+                  disabled={!selection || isCreating}
+                  onClick={() => {
+                    void onChunkSelection().then(() => {
+                      setMenu(null);
+                      onSelectionChange(null);
+                      window.getSelection()?.removeAllRanges();
+                    });
+                  }}
+                >
+                  Chunk with pi
+                </button>
+              )}
             </>
           ) : (
             <button

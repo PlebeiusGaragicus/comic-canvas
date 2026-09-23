@@ -41,6 +41,8 @@ export function captionAsPanel(parent: StoryPanel, caption: StoryPanelCaption): 
     imagePrompts: [],
     characterSlugs: [],
     locationSlug: null,
+    shot: null,
+    sizeHint: null,
     finalized: false,
   };
 }

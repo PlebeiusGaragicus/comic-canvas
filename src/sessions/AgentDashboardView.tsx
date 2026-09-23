@@ -64,6 +64,8 @@ function kindLabel(kind: AgentSessionKind) {
       return 'Draft panel prompt';
     case 'refine-panel-prompt':
       return 'Refine panel prompt';
+    case 'chunk-panels':
+      return 'Chunk panels';
     default:
       return kind;
   }

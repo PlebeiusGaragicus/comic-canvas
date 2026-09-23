@@ -21,6 +21,7 @@ import {
   resetChunks,
   resetLayout,
   saveDocument,
+  unclaimedRanges,
   validateDocument,
   validatePanel,
   validatePanelEntities,
@@ -477,6 +478,35 @@ describe('image prompts', () => {
       await expect(appendImagePrompt(FARM, panel.id, wrapped)).rejects.toSatisfy((error) => /chat wrapper/.test((error as Error).message));
     }
     expect(CHAT_WRAPPER_RE.test('The hero stands, sure of himself.')).toBe(false);
+  });
+});
+
+describe('chunking fields', () => {
+  it('stores shot and size hint, validates them, and tags entities on create', async () => {
+    await seedProject();
+    await seedBook('Alpha opens the barn door. Beta follows. Gamma waits.\n');
+    await createExtractedCharacter('hero');
+    const created = await createPanel(FARM, { startOffset: 0, endOffset: 26, shot: 'establishing', sizeHint: 'large', characterSlugs: ['hero'], autoPlace: false });
+    const panel = panelWhere(created, (item) => item.startOffset === 0);
+    expect(panel.shot).toBe('establishing');
+    expect(panel.sizeHint).toBe('large');
+    expect(panel.characterSlugs).toEqual(['hero']);
+    expect(panel.pageId).toBeNull();
+    expect(byId(await patchPanel(FARM, panel.id, { shot: null, sizeHint: 'small' }), panel.id)).toMatchObject({ shot: null, sizeHint: 'small' });
+    await expect(patchPanel(FARM, panel.id, { shot: 'selfie' as never })).rejects.toSatisfy((error) => isServiceError(error, 'invalid') && /panel.shot/.test(error.message));
+    await expect(createPanel(FARM, { startOffset: 27, endOffset: 40, characterSlugs: ['ghost'] })).rejects.toSatisfy((error) => isServiceError(error, 'invalid'));
+    expect(validatePanel({ id: 'panel-009', order: 0, sourceKind: 'panel' }).shot).toBeNull();
+  });
+
+  it('reports the unclaimed sub-ranges of a passage', async () => {
+    await seedProject();
+    await seedBook('Alpha opens the barn door. Beta follows. Gamma waits.\n');
+    await createPanel(FARM, { startOffset: 27, endOffset: 40, autoPlace: false });
+    const document = await readDocument(FARM);
+    expect(unclaimedRanges(document, 0, 53)).toEqual([[0, 27], [40, 53]]);
+    expect(unclaimedRanges(document, 30, 35)).toEqual([]);
+    expect(unclaimedRanges(document, 0, 27)).toEqual([[0, 27]]);
+    expect(unclaimedRanges(document, 35, 53)).toEqual([[40, 53]]);
   });
 });
 

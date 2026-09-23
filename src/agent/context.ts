@@ -96,6 +96,13 @@ export function sortedStoryPanels(document: StoryPanelDocument): StoryPanel[] {
 
 export const GEMINI_IMAGE_GUIDE = geminiImageGuide;
 
+/** Framing chosen when the passage was chunked; the composition line follows it. */
+function framingLines(panel: StoryPanel): string[] {
+  if (!panel.shot && !panel.sizeHint) return [];
+  const parts = [panel.shot ? `${panel.shot} shot` : null, panel.sizeHint ? `${panel.sizeHint} panel` : null].filter(Boolean);
+  return [`Framing decided at chunking (use it for the composition unless user guidance overrides): ${parts.join(', ')}.`, ''];
+}
+
 /** Small assembled context: panel text, neighbors, cast looks, style. The
  *  image-prompt guide is part of the system prompt for these profiles. */
 export async function panelPromptContextLines(slug: string, panel: StoryPanel, document: StoryPanelDocument): Promise<string[]> {
@@ -111,6 +118,7 @@ export async function panelPromptContextLines(slug: string, panel: StoryPanel, d
       lines.push('');
     }
     lines.push("THIS PANEL's story text (draw this moment):", panelStoryText(panel), '');
+    lines.push(...framingLines(panel));
     if (after.length) {
       lines.push('Story context — panels just after this one:');
       for (const neighbor of after) lines.push(`- ${clipText(panelStoryText(neighbor), 400)}`);
@@ -118,6 +126,7 @@ export async function panelPromptContextLines(slug: string, panel: StoryPanel, d
     }
   } else {
     lines.push("THIS PANEL's story text (draw this moment):", panelStoryText(panel), '');
+    lines.push(...framingLines(panel));
   }
   const status = await adaptationStatus(slug);
   const lookLines = entityLookLines(status.characters);
