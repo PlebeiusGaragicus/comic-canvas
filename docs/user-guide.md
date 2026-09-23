@@ -1,12 +1,43 @@
 # User Guide: Adapting a Story into a Comic
 
+## Setup
+
+Comic Canvas runs in your browser and talks only to services you configure.
+Open **Settings** (gear icon) once:
+
+- **Text model (agent tasks).** Add an endpoint: any OpenAI-completions
+  compatible server. Presets fill in the base URL for OpenAI, OpenRouter,
+  LM Studio, Ollama and llama.cpp; paste a key if the server needs one, click
+  **Fetch models**, check each model's **context window** (the book must fit
+  in it), and pick a **Default model**. Keys are stored in this browser and
+  sent only to that endpoint.
+- **Local servers must allow this site's origin (CORS):** LM Studio → enable
+  CORS in the server settings; Ollama → start it with
+  `OLLAMA_ORIGINS=https://abvstudio.net`; llama.cpp → run `llama-server`
+  with `--cors` or the matching origin. Without it the browser cannot reach
+  the server and "Fetch models" fails with a clear message.
+- **Image generation.** Paste a Google AI Studio (Gemini) key; it is checked
+  against the API before it is saved. Choose default image model, aspect
+  ratio and size.
+- **Storage.** Projects live in this browser. Use **Export** on a project
+  card (or **Export all projects** here) to back them up as zips, and
+  **Import** on the landing page to restore. Installing the app (browser
+  install prompt, or the landing page hint) asks for persistent storage so
+  the browser will not evict your projects; Safari also stops its seven-day
+  cleanup for installed apps. Supported browsers: Chrome, Edge, Firefox,
+  Safari 26+; private-browsing windows usually cannot store projects.
+
 The workflow is a pipeline. Each step feeds the next, and some steps are hard-gated
 (the app blocks you with an explanation if you skip ahead).
 
 ## 1. Import the book — Story view
 
-Upload your manuscript (`book.txt`). Then run **Read book** so pi ingests the text;
-the extraction tasks that follow branch off this warm session.
+Upload your manuscript (`book.txt`). Then run **Read book**: the app measures
+the book against your default model's context window and prepares it for the
+agent. Every later book task sends the whole book with its request (the task
+panel shows the token estimate), so a model with a large window and prompt
+caching keeps this cheap. If the book does not fit, the task says so — pick a
+larger model and run **Read book** again.
 
 ## 2. Set the visual style and style anchors — Canvas view
 
@@ -19,7 +50,7 @@ the extraction tasks that follow branch off this warm session.
 ## 3. Concept art — Concept Art view
 
 Explore look and feel before committing to canonical designs. Create cards (or let
-pi **suggest** character/location concepts), edit them, and generate on the canvas.
+the agent **suggest** character/location concepts), edit them, and generate on the canvas.
 Concept art is a *style* input — it does not stand in for canonical references.
 
 ## 4. Extract characters and locations — Characters and Locations views
@@ -29,7 +60,7 @@ Run **Find characters** to register the cast, then **Extract** each character
 description, performance notes, continuity notes, and reference-sheet prompt
 variants (base plus durable looks like young/adult or post-injury, each with a
 story context). Review and edit records in the structured editor; use the
-**Refine** feedback box to have pi revise a record ("make her scar more
+**Refine** feedback box to have the agent revise a record ("make her scar more
 prominent, add a post-duel variant"). These slugs and look descriptors are what
 panel prompts are built from.
 
@@ -59,7 +90,7 @@ human-led; you decide the beats. Place panels onto pages in the **Layout** view.
 ## 7. Draft panel prompts — Story or Layout view (panel editor)
 
 Open a panel and use **Draft with pi** (or **Draft with input…** to seed an idea).
-Pi writes a generation-ready prompt using the canonical character looks and location
+The agent writes a generation-ready prompt using the canonical character looks and location
 descriptions, and tags the panel with `characterSlugs`/`locationSlug`. Review the
 **Who and where** chips and adjust if needed. Iterate with the one-line
 **Refine** feedback input.
@@ -78,8 +109,10 @@ as a booklet PDF.
 
 ## Monitoring
 
-The **Agent** view is a dashboard of all pi tasks: live progress for running tasks
-and a history with full traces for past ones.
+The **Agent** view is a dashboard of all agent tasks: live progress for running
+tasks and a history with full traces for past ones. Tasks run inside the page:
+closing or reloading the tab stops them (the app warns first), and they are
+marked failed on the next load.
 
 ```mermaid
 flowchart LR

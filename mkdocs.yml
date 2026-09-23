@@ -1,7 +1,8 @@
 site_name: Comic Canvas
-site_description: Build comic books with AI assistance — canvas, layout editor, and pi agent tasks.
-site_url: https://plebchat.me/comic-canvas/
+site_description: Build comic books with AI assistance — canvas, layout editor, and in-browser agent tasks.
+site_url: https://abvstudio.net/docs/
 repo_url: https://github.com/PlebeiusGaragicus/comic-canvas
+site_dir: dist/docs
 
 theme:
   name: material
@@ -16,8 +17,6 @@ nav:
   - User Guide: user-guide.md
   - Development & Release Model: development.md
   - Architecture: architecture.md
-  - Packaging & Distribution: packaging.md
   - Pi Agent Methodology: pi-agent-integration.md
   - Development:
-      - Release checklist: release-checklist.md
       - Interactions migration: interactions-migration.md

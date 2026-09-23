@@ -1,9 +1,19 @@
 # Pi as an Embedded Application Agent: A Methodology
 
-*How this repository integrates the pi coding agent, why the pattern generalizes to
-arbitrary desktop applications, a concrete engineering plan for building a
+*How this repository integrates the pi agent, why the pattern generalizes to
+arbitrary applications, a concrete engineering plan for building a
 turn-based game where pi is a first-class player, and why this constitutes a
 real alternative to directed-graph agent frameworks.*
+
+!!! note "Transport update (2026-09)"
+    Comic Canvas is now a client-only web app. The reference implementation in
+    section 1 runs pi's `Agent` class (`@earendil-works/pi-agent-core`) inside
+    the browser page with TypeScript tools that call the app's services
+    directly, instead of a `pi --mode rpc` subprocess with an extension that
+    called a REST API. Sections 0 and 2 onward are unchanged: the thesis is
+    about capabilities, validation and lifecycle, not about the process
+    boundary. Sections 5.x still describe the subprocess variant as one valid
+    way to host pi from a non-JavaScript application.
 
 ---
 
@@ -150,102 +160,95 @@ between them are the reason the system stays legible.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  UI (webui/)                                                │
-│  buttons → POST /pi-tasks {profile, target?, instructions?} │
-│  SSE subscription → live event feed per task                │
+│  UI (src/*.tsx)                                             │
+│  buttons → taskManager.startTask(profile, target?, instr?)  │
+│  usePiTask subscribes to the task's in-page event buffer    │
 ├─────────────────────────────────────────────────────────────┤
-│  Task profiles (api/pi_profiles.py)          ← control plane│
+│  Task profiles (src/agent/profiles/*)        ← control plane│
 │  precheck · lazy step plan · prompt assembly ·              │
-│  tool allow-list · post-run validation (on_success)         │
+│  tool list · post-run validation (onSuccess) · repair prompt│
 ├─────────────────────────────────────────────────────────────┤
-│  Runtime (api/pi_runtime.py)                 ← mechanism    │
-│  one `pi --mode rpc` subprocess per step · SSE ring buffer ·│
-│  abort/terminate · restart snapshots · PID-reuse detection  │
+│  Runtime (src/agent/runtime.ts)              ← mechanism    │
+│  one pi-agent-core `Agent` per step · event ring buffer ·   │
+│  abort · step timeout · reload sweep · stored traces        │
 ├─────────────────────────────────────────────────────────────┤
-│  Extension (.pi/extensions/photo-web.ts)     ← capability   │
-│  domain tools that call back into the REST API,             │
-│  registered only if named in PHOTO_WEB_ALLOWED_TOOLS        │
+│  Tools (src/agent/tools/*)                   ← capability   │
+│  typed AgentTools that call the services directly;          │
+│  only the profile's tools exist for that agent              │
 └─────────────────────────────────────────────────────────────┘
-        Skills (.pi/skills/*) span the profile+extension layers:
+        Skills (src/agent/skills/*.md) are system-prompt sections:
         they tell the model HOW to behave and HOW to deliver.
 ```
 
 ### 1.1 Profiles are the control plane, not the prompt
 
-A `TaskProfile` (`api/pi_profiles.py:69`) is the unit of agent configuration:
+A `TaskProfile` (`src/agent/profiles/types.ts`) is the unit of agent configuration:
 
-```python
-@dataclass(frozen=True)
-class TaskProfile:
-    id: str                      # "extract-character", "draft-panel-prompt", ...
-    title: Callable[...]         # human-facing label
-    precheck: Callable[...]      # raise HTTPException → task never starts
-    plan: Callable[...]          # lazy iterator of TaskSteps
-    accepts_target: bool
-    accepts_instructions: bool
-    tools: tuple[str, ...]       # the ONLY domain tools this agent gets
+```ts
+interface TaskProfile {
+  id: PiTaskProfile;             // "extract-character", "draft-panel-prompt", ...
+  title: (target) => string;     // human-facing label
+  precheck: (slug, args) => Promise<void>;   // throw ServiceError → task never starts
+  plan: (slug, args) => AsyncGenerator<TaskStep>;  // lazy step plan
+  acceptsTarget: boolean;
+  acceptsInstructions: boolean;
+  tools: string[];               // the ONLY domain tools this agent gets
+}
 ```
 
 Three properties matter here:
 
 **Prechecks gate the world, not the model.** `refine-character` refuses to start
-unless the character is registered *and* extracted (`_refine_entity_precheck`).
+unless the character is registered *and* extracted (`refinePrecheck`).
 `draft-panel-prompt` refuses to start until a canonical cast exists
-(`_require_extracted_characters`). Workflow ordering is enforced by HTTP 409s
-before a single token is generated — the model never has to be trusted to "know"
+(`requireExtractedCharacters`). Workflow ordering is enforced by conflict
+errors before a single token is generated — the model never has to be trusted to "know"
 it's too early.
 
 **Plans are lazy generators, so later steps see earlier steps' output.**
 `extract-all-characters` yields a discovery step, and only after that step
 completes does the generator resume and enumerate the records the discovery step
-just registered (`_extract_all_entities_plan`). This is a two-node sequential
-graph, expressed as eight lines of Python, with no framework.
+just registered (`extractAllPlan`). This is a two-node sequential graph,
+expressed as an async generator, with no framework.
 
-**`on_success` is post-hoc validation of a real state transition.** After the
+**`onSuccess` is post-hoc validation of a real state transition.** After the
 agent finishes, the profile re-reads application state and asserts the intended
 mutation happened:
 
-- discovery: "did new slugs appear?" → else `RuntimeError("Agent finished without
+- discovery: "did new slugs appear?" → else `Error("Agent finished without
   calling register_character")`
 - extract: "does the record now have visualDescription + a base variant prompt?"
 - refine: "did the serialized record actually change from the snapshot taken
-  before the run?" (`_refine_entity_plan` — it diffs the record JSON, so an agent
+  before the run?" (`refinePlan` — it diffs the record JSON, so an agent
   that pattern-matches success without mutating anything fails the task)
 - draft-panel-prompt: "did a prompt id appear that wasn't there before?"
 
 This is the single most important pattern in the codebase. The agent's chat
 output is never parsed. **Success is defined as an observable domain mutation,
 verified by the application after the fact.** The agent's transcript is
-diagnostics, not data.
+diagnostics, not data. When validation fails, the runtime sends up to two
+repair prompts on the same agent ("You did not call X …") before failing —
+a cheap second chance that costs nothing in trust because the same check runs
+again.
 
 ### 1.2 Tools are capabilities, and absence is the strongest denial
 
-`.pi/extensions/photo-web.ts` defines nine domain tools (`register_character`,
+`src/agent/tools/` defines nine domain tools (`register_character`,
 `update_character`, `set_panel_image_prompt`, `create_concept_card`, ...). Every
-tool is a thin, typed wrapper over the application's own REST API — the same API
-the human-facing UI uses. The extension holds no state and no business logic.
+tool is a thin, typed `AgentTool` over the application's own services — the
+same functions the human-facing UI calls. Tools hold no state and no business
+logic.
 
-Scoping happens at registration time:
-
-```ts
-const allowed = (process.env.PHOTO_WEB_ALLOWED_TOOLS ?? "").split(",")...
-for (const name of allowed) {
-  const tool = TOOLS[name];
-  if (tool) pi.registerTool(tool);
-}
-```
-
-The runtime sets `PHOTO_WEB_ALLOWED_TOOLS` from `profile.tools`, so a
-`draft-panel-prompt` agent's world contains exactly one write tool:
-`set_panel_image_prompt`. Tools outside the profile **do not exist in the system
-prompt at all**. This is better than instructing the model not to use them —
+Scoping happens at construction time: each step passes exactly its profile's
+tools to `new Agent({ initialState: { tools } })`, so a `draft-panel-prompt`
+agent's world contains exactly one write tool: `set_panel_image_prompt`. There
+are no built-in tools in the browser at all — no shell, no filesystem — so
+the sandboxing weaknesses of the subprocess era disappear by construction.
+Tools outside the profile **do not exist in the system prompt at all**. This is better than instructing the model not to use them —
 there is nothing to misuse, no tokens spent describing them, and no attack
 surface for a prompt to talk the model into calling them. For small open-source
 models especially, a 1–3 tool loadout is the difference between reliable tool
 calling and flailing.
-
-The extension is loaded explicitly via `--extension`, never via project-trust
-discovery, so an agent run can't pick up stray tools from the workspace.
 
 Note also the tool *ergonomics*: `list_characters` doesn't dump raw JSON — it
 returns one formatted line per record (`slug | name | extracted | variants: ...`).
@@ -254,9 +257,9 @@ but real quality lever.
 
 ### 1.3 Skills are behavior contracts with an explicit delivery clause
 
-Each profile's prompt begins with a skill invocation (`/skill:extract-character
-<slug>`) followed by assembled context. The skill file
-(`.pi/skills/extract-character/SKILL.md`) contains a **Delivery Contract**:
+Each profile's system prompt is a short preamble plus the skill markdown
+(`src/agent/skills/extract-character.md`); the user message is the
+app-assembled context. The skill contains a **Delivery Contract**:
 
 > Deliver results **only** through the `update_character` tool. ... Do not write
 > files. Do not paste the record in your reply. After delivering, reply with
@@ -269,8 +272,8 @@ validated twice (schema at call time, domain state after the run).
 
 ### 1.4 Context is assembled by the application, not fetched by the agent
 
-`_panel_prompt_context_lines` is a miniature retrieval system written in plain
-Python: the panel's story text, ±2 neighboring panels, one clipped "look line"
+`panelPromptContextLines` (`src/agent/context.ts`) is a miniature retrieval
+system written in plain TypeScript: the panel's story text, ±2 neighboring panels, one clipped "look line"
 per canonical character/location variant, the project's visual style, and the
 Gemini image prompt guide. The application decides what the agent sees, in what order,
 clipped to what length.
@@ -281,55 +284,51 @@ inspectable, cheap, and it doubles as an information-boundary mechanism — the
 agent literally cannot see what the assembler doesn't include. (Section 5.7
 shows why this becomes the hidden-information mechanism in games.)
 
-The one place broad context *is* wanted — knowing the whole book — is handled by
-session forking: a `read-book` task loads the book once into a pi session, and
-subsequent character/location tasks fork from that session (`--fork
-<session_id>`, `fork_from_book_session=True`). Read once, branch many. This is
-pi-native memoization of expensive context, and it's a feature graph frameworks
-don't give you for free.
+The one place broad context *is* wanted — knowing the whole book — is handled
+by seeding: `read-book` measures the book against the selected model's
+context window and records a `bookContext`; every book-dependent step then
+prepends the book as a user message plus a synthetic "Book loaded." reply
+before its task prompt (`src/agent/book.ts`). That is the in-memory
+equivalent of forking a warm session: read once, branch many. On providers
+with prompt caching the repeated prefix is cheap; on local models the task
+panel shows the token cost honestly.
 
 ### 1.5 The runtime owns lifecycle so the product doesn't become a chat app
 
-`api/pi_runtime.py` is ~640 lines and covers the unglamorous 80% of embedding an
-agent:
+`src/agent/runtime.ts` covers the unglamorous 80% of embedding an agent:
 
-- **RPC, not CLI scraping.** Each step runs `pi --mode rpc`; commands and events
-  are line-delimited JSON over stdin/stdout. Prompting, aborting, and session
-  querying are structured commands with correlation ids.
-- **Events**: every message is (a) appended raw to a per-task `.events.jsonl`
-  file, and (b) projected into a UI-safe shape and pushed into a 2000-entry ring
-  buffer that SSE listeners drain (`TaskHandle.append_event/subscribe`). Live
-  progress and post-hoc forensics from one stream.
-- **Cancellation** is layered: RPC `abort` → 15s timer → `SIGTERM` → `kill`. An
-  abort requested before the subprocess exists is delivered as soon as it does.
-- **Crash honesty**: a JSON snapshot per task survives API restarts; on the next
-  request touching the project, `_sweep` marks orphaned "running" tasks as
-  failed and kills leftover PIDs — with kernel start-time comparison to avoid
-  killing an innocent reused PID (`process_start_time`). Interrupted work reports
+- **The library, not the CLI.** Each step constructs a pi-agent-core `Agent`
+  with a system prompt, tools, seeded messages and a stream function bound to
+  the user's endpoint; `agent.prompt()` runs the loop in the page.
+- **Events**: every `AgentEvent` is projected into a UI-safe shape
+  (`assistant_text`, `tool_start`, `tool_end`, lifecycle, plus the runtime's
+  `task_start` / `task_progress` / `task_state`) and pushed into a 2000-entry
+  ring buffer that subscribers replay from a sequence number. The full
+  message list of every step is stored as the task's trace.
+- **Cancellation** is `agent.abort()` on the active step; the runtime turns it
+  into a `cancelled` terminal state at the next step boundary.
+- **Crash honesty**: tasks die with the page, so on load the runtime marks
+  ledger rows still "running" as failed ("Interrupted by reload") and the
+  page warns before unloading while a task runs. Interrupted work reports
   "failed", never a stale "running".
-- **Headless discipline**: any interactive `extension_ui_request` (select,
-  confirm, input) is auto-cancelled — a task agent must never block on a human.
-- **Timeouts** at every layer: per-RPC-command (120s), per-step (2h).
+- **Timeouts** per step (2h; local models are slow).
 
 None of this is domain-specific. This file is the reusable core of the pattern:
-if you extracted it, `TaskProfile`, and the env-scoping convention into a
-library, you'd have a general "embed pi in your app" kit.
+if you extracted it and `TaskProfile` into a library, you'd have a general
+"embed pi in your app" kit for any JavaScript host.
 
 ### 1.6 Honest weaknesses of the current implementation
 
 Called out so the methodology isn't oversold:
 
-1. **The allow-list is enforced at tool-registration time, not at the API
-   boundary.** A hostile process on localhost could call the REST API directly.
-   Fine for a single-user local app; the hardened version issues a per-task
-   capability token (the runtime already exports `PHOTO_WEB_TASK`) and has the
-   API verify tool calls against the task's profile server-side.
-2. **Single-process state.** Live handles, ring buffers, and SSE listeners are
-   process-local. Snapshots cover restarts, but the design assumes one uvicorn
-   worker. That assumption should be asserted, not implied.
-3. **Naming drift** between backend profile ids and some frontend/test
-   references — a reminder that when profile ids are your control plane, they
-   deserve the same rigor as a database schema.
+1. **Tools and services share one JavaScript realm.** A tool can only call
+   what it imports, but nothing prevents a future tool from importing more
+   than it should; the discipline is code review, not a process boundary.
+2. **Tasks are page-local.** Live handles and ring buffers vanish on reload;
+   the ledger and stored traces survive, the run does not. A resumable run
+   would need the transcript persisted per turn.
+3. **The book is resent per step.** Honest and simple, but on endpoints
+   without prompt caching `extract-all-*` pays the book once per character.
 
 ---
 

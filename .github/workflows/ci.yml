@@ -2,61 +2,32 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, refactor]
   pull_request:
 
 jobs:
-  backend:
+  web:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: "3.12"
-      - name: Install dependencies
-        run: pip install -r api/requirements.txt
-      - name: Run backend tests
-        run: python -m pytest api/ -q
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npx vite build
+      - name: Install browsers
+        run: npx playwright install --with-deps chromium webkit
+      - name: E2E walk (chromium; webkit skips itself when the Linux build lacks OPFS)
+        run: npm run test:e2e
         env:
-          COMIC_CANVAS_HOME: /tmp/cc-test-home
-
-  frontend:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: Build web UI (tsc + vite)
-        working-directory: webui
-        run: |
-          npm install --no-audit --no-fund
-          npm run build
-
-  shellcheck:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: Shellcheck installer and scripts
-        run: shellcheck install.sh scripts/*.sh run
-
-  smoke:
-    runs-on: ubuntu-22.04
-    needs: [backend, frontend]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: Install dependencies
-        run: pip install -r api/requirements.txt
-      - name: Build web UI
-        working-directory: webui
-        run: |
-          npm install --no-audit --no-fund
-          npm run build
-      - name: Unfrozen single-process smoke test
-        run: PYTHON=python scripts/smoke-frozen.sh ./scripts/run-unfrozen.sh
+          CI: "1"
+      - name: PWA smoke (production build, offline reload)
+        run: npx playwright test -c playwright.pwa.config.ts
